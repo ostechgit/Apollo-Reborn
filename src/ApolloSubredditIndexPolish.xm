@@ -6,6 +6,7 @@
 #import "ApolloCommon.h"
 #import "ApolloFavoriteConfirm.h"
 #import "ApolloFollowingSection.h"
+#import "ApolloHideSubredditSections.h"
 #import "ApolloDuoRail.h"
 #import "ApolloDuoSplitView.h"
 #import "ApolloMetaFeedRowRecovery.h"
@@ -3137,7 +3138,10 @@ static NSArray<NSNumber *> *ApolloSubredditIndexVisibleMetaFeedIndexes(UITableVi
         return visibleIndexes;
     }
 
-    NSInteger nativeRowCount = [tableView numberOfRowsInSection:0];
+    // Random/RandNSFW/CustomFeed pseudo-rows are appended after the native
+    // feed rows; leave them out or a missing Moderator row goes undetected.
+    NSInteger nativeRowCount = [tableView numberOfRowsInSection:0]
+        - ApolloHideSubredditSectionsAppendedSection0RowCount();
     if (nativeRowCount != (NSInteger)visibleIndexes.count - 1) {
         objc_setAssociatedObject(tableView,
                                  &kApolloMetaFeedModeratorAvailabilityMismatchKey,

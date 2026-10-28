@@ -1680,7 +1680,8 @@ static NSArray<NSString *> *ApolloConfiguredSubredditSources(void) {
     NSMutableArray<NSString *> *sources = [NSMutableArray arrayWithCapacity:3];
     for (id candidate in @[sRandNsfwSubredditsSource ?: @"",
                            sRandomSubredditsSource ?: @"",
-                           sTrendingSubredditsSource ?: @""]) {
+                           sTrendingSubredditsSource ?: @"",
+                           sCustomFeedSource ?: @""]) {
         if ([candidate isKindOfClass:[NSString class]] &&
             [candidate length] > 0 && ![sources containsObject:candidate]) {
             [sources addObject:candidate];
@@ -2455,6 +2456,108 @@ static NSURLRequest *ApolloLocalFastFailRequest(NSString *path) {
     return request;
 }
 
+// Apollo doesn't consistently lowercase the subreddit-name path segment of
+// every request it builds for a favorited pseudo-subreddit: confirmed via
+// debug logging that the `best.json` preview request for a pseudo-row named
+// "CustomFeed" lowercases it to "/r/customfeed/best.json", but the `hot`/
+// `about.json` requests that actually populate the feed preserve the exact
+// display-name case ("/r/CustomFeed/hot", "/r/CustomFeed/about.json"). A
+// case-sensitive hasPrefix: silently misses the latter, so CustomFeed's own
+// pseudo-row (added with a capitalized display name, matching Random/RandNSFW)
+// never got redirected and fell through to a real request for a subreddit
+// that doesn't exist.
+static BOOL ApolloPathHasCaseInsensitivePrefix(NSString *path, NSString *prefix) {
+    if (path.length < prefix.length) return NO;
+    return [[path substringToIndex:prefix.length] caseInsensitiveCompare:prefix] == NSOrderedSame;
+}
+
+// Case-insensitively replaces the first occurrence of `segment` in `urlString`
+// with `replacement`, leaving the rest of the string untouched.
+static NSString *ApolloReplaceCaseInsensitive(NSString *urlString, NSString *segment, NSString *replacement) {
+    NSRange range = [urlString rangeOfString:segment options:NSCaseInsensitiveSearch];
+    if (range.location == NSNotFound) return urlString;
+    return [urlString stringByReplacingCharactersInRange:range withString:replacement];
+}
+
+// Shared by both NSURLSession dataTaskWithRequest: hooks (with and without a
+// completion handler) -- Apollo/AFNetworking routes different requests for the
+// same pseudo-subreddit navigation through both entry points (confirmed via
+// debug logging: a `best.json` preview call arrives on the plain, delegate-
+// based dataTaskWithRequest:, while the real `hot`/`about.json` calls that
+// actually populate the feed arrive on the completion-handler variant), so
+// this rewrite needs to be reachable from both hooks rather than living in
+// just one of them.
+//
+// Returns a rewritten request, or nil if this isn't a random/randnsfw/customfeed
+// request (or one of them with no source configured, or a source that's empty
+// or currently unfetchable) -- callers should fall through to %orig on nil.
+static NSURLRequest *ApolloRandomFeedRewrittenRequest(NSURLRequest *request) {
+    NSURL *url = [request URL];
+    if (![url.host isEqualToString:@"oauth.reddit.com"]) return nil;
+
+    NSString *path = url.path;
+    NSURL *subredditListURL;
+    BOOL isCustomFeed = NO;
+    NSString *matchedSegment;
+    if (ApolloPathHasCaseInsensitivePrefix(path, @"/r/random/")) {
+        if (![sRandomSubredditsSource length]) return nil;
+        subredditListURL = [NSURL URLWithString:sRandomSubredditsSource];
+        matchedSegment = @"/random/";
+    } else if (ApolloPathHasCaseInsensitivePrefix(path, @"/r/randnsfw/")) {
+        if (![sRandNsfwSubredditsSource length]) return nil;
+        subredditListURL = [NSURL URLWithString:sRandNsfwSubredditsSource];
+        matchedSegment = @"/randnsfw/";
+    } else if (ApolloPathHasCaseInsensitivePrefix(path, @"/r/customfeed/")) {
+        if (![sCustomFeedSource length]) return nil;
+        subredditListURL = [NSURL URLWithString:sCustomFeedSource];
+        isCustomFeed = YES;
+        matchedSegment = @"/customfeed/";
+    } else {
+        return nil;
+    }
+
+    // Check cache. The constructor's ApolloSeedSubredditSourceMemoryCacheAsync
+    // normally prewarms this; on a miss (offline/slow network) preserve Apollo's
+    // native request for this tap and refresh asynchronously for the next one --
+    // never fetch synchronously from a request hook.
+    ApolloSubredditSourceCacheEntry *sourceEntry =
+        [subredditListCache objectForKey:subredditListURL.absoluteString];
+    if (sourceEntry.subreddits.count == 0) {
+        ApolloRefreshSubredditListSourceAsync(
+            subredditListURL.absoluteString,
+            NO,
+            NSURLRequestUseProtocolCachePolicy,
+            nil);
+        return nil;
+    }
+    NSArray<NSString *> *subreddits = sourceEntry.subreddits;
+
+    NSString *urlString = [url absoluteString];
+    NSString *newUrlString;
+    if (isCustomFeed) {
+        // Combine (up to a cap) subreddits into a single "sub1+sub2+..." listing.
+        // Reddit resolves this URL combinator server-side with no subscription
+        // object behind it, so unlike a saved multireddit it isn't subject to
+        // Reddit's subscriber-count cap -- the only practical limit is URL length.
+        const NSUInteger kCustomFeedMaxSubreddits = 400;
+        NSArray<NSString *> *combinedSubreddits = subreddits;
+        if (combinedSubreddits.count > kCustomFeedMaxSubreddits) {
+            ApolloLog(@"[CustomFeed] Source list has %lu subreddits; truncating to %lu to keep the combined URL a sane length", (unsigned long)combinedSubreddits.count, (unsigned long)kCustomFeedMaxSubreddits);
+            combinedSubreddits = [combinedSubreddits subarrayWithRange:NSMakeRange(0, kCustomFeedMaxSubreddits)];
+        }
+        NSString *combinedName = [combinedSubreddits componentsJoinedByString:@"+"];
+        newUrlString = ApolloReplaceCaseInsensitive(urlString, matchedSegment, [NSString stringWithFormat:@"/%@/", combinedName]);
+    } else {
+        // Pick a random subreddit, then modify the request URL to use that subreddit, simulating a 302 redirect in Reddit's original API behaviour
+        NSString *randomSubreddit = subreddits[arc4random_uniform((uint32_t)subreddits.count)];
+        newUrlString = ApolloReplaceCaseInsensitive(urlString, matchedSegment, [NSString stringWithFormat:@"/%@/", randomSubreddit]);
+    }
+
+    NSMutableURLRequest *modifiedRequest = [request mutableCopy];
+    [modifiedRequest setURL:[NSURL URLWithString:newUrlString]];
+    return modifiedRequest;
+}
+
 // --- Imgur keyless access + regional-block fallbacks -------------------------
 // Imgur closed public API registration (users can no longer obtain a client
 // ID), and its UK exit region-blocks every imgur.com host for properly
@@ -2716,7 +2819,6 @@ static void ApolloImgurRetryAlbumViaTextProxy(NSString *albumID,
     }
 
     NSURL *url = [request URL];
-    NSURL *subredditListURL;
 
     // Reroute URL-shaped search queries to /api/info?url=<URL>. Reddit's /search.json
     // 302-redirects URL-shaped queries to /submit.json (and on to /login), producing
@@ -2750,48 +2852,11 @@ static void ApolloImgurRetryAlbumViaTextProxy(NSString *albumID,
         }
     }
 
-    // Determine whether request is for random subreddit
-    if ([url.host isEqualToString:@"oauth.reddit.com"] && [url.path hasPrefix:@"/r/random/"]) {
-        if (![sRandomSubredditsSource length]) {
-            return %orig;
-        }
-        subredditListURL = [NSURL URLWithString:sRandomSubredditsSource];
-    } else if ([url.host isEqualToString:@"oauth.reddit.com"] && [url.path hasPrefix:@"/r/randnsfw/"]) {
-        if (![sRandNsfwSubredditsSource length]) {
-            return %orig;
-        }
-        subredditListURL = [NSURL URLWithString:sRandNsfwSubredditsSource];
-    } else {
-        return %orig;
-    }
+    // Random subreddit / RandNSFW / custom combined feed request rewriting.
+    NSURLRequest *randomFeedRequest = ApolloRandomFeedRewrittenRequest(request);
+    if (randomFeedRequest) return %orig(randomFeedRequest);
 
-    // Check cache
-    ApolloSubredditSourceCacheEntry *sourceEntry =
-        [subredditListCache objectForKey:subredditListURL.absoluteString];
-
-    if (sourceEntry.subreddits.count == 0) {
-        // The constructor normally prewarms this cache. If it did not finish
-        // (offline/slow network), preserve Apollo's native request for this tap
-        // and refresh asynchronously for the next one.
-        ApolloRefreshSubredditListSourceAsync(
-            subredditListURL.absoluteString,
-            NO,
-            NSURLRequestUseProtocolCachePolicy,
-            nil);
-        return %orig;
-    }
-
-    NSArray<NSString *> *subreddits = sourceEntry.subreddits;
-
-    // Pick a random subreddit, then modify the request URL to use that subreddit, simulating a 302 redirect in Reddit's original API behaviour
-    NSString *randomSubreddit = subreddits[arc4random_uniform((uint32_t)subreddits.count)];
-    NSString *urlString = [url absoluteString];
-    NSString *newUrlString = [urlString stringByReplacingOccurrencesOfString:@"/random/" withString:[NSString stringWithFormat:@"/%@/", randomSubreddit]];
-    newUrlString = [newUrlString stringByReplacingOccurrencesOfString:@"/randnsfw/" withString:[NSString stringWithFormat:@"/%@/", randomSubreddit]];
-
-    NSMutableURLRequest *modifiedRequest = [request mutableCopy];
-    [modifiedRequest setURL:[NSURL URLWithString:newUrlString]];
-    return %orig(modifiedRequest);
+    return %orig;
 }
 
 // Imgur Delete and album creation
@@ -2821,6 +2886,16 @@ static void ApolloImgurRetryAlbumViaTextProxy(NSString *albumID,
         };
         return %orig(redditMediaCommentRequest, wrappedCompletionHandler);
     }
+
+    // Random subreddit / RandNSFW / custom combined feed request rewriting.
+    // Apollo/AFNetworking routes some of the requests for a favorited
+    // pseudo-subreddit through this completion-handler variant rather than
+    // the plain dataTaskWithRequest: above (confirmed via debug logging: the
+    // `hot`/`about.json` calls that actually populate the feed arrive here),
+    // so this needs the same rewrite the other hook has, not just a case-
+    // insensitivity fix.
+    NSURLRequest *randomFeedRequest = ApolloRandomFeedRewrittenRequest(request);
+    if (randomFeedRequest) return %orig(randomFeedRequest, completionHandler);
 
     NSURL *url = [request URL];
     NSString *host = [url host];
@@ -3660,6 +3735,7 @@ static void ApolloShowRedditRateLimitToast(NSTimeInterval seconds) {
                                     UDKeyRandomSubredditsSource: defaultRandomSubredditsSource,
                                     UDKeyRandNsfwSubredditsSource: @"",
                                     UDKeyTrendingSubredditsSource: defaultTrendingSubredditsSource,
+                                    UDKeyCustomFeedSource: @"",
                                     UDKeyReadPostMaxCount: @0,
                                     UDKeySubredditListEnhancements: @YES,
                                     UDKeySubredditFeedIconStyle: @(ApolloSubredditFeedIconStyleClassic),
@@ -3713,6 +3789,7 @@ static void ApolloShowRedditRateLimitToast(NSTimeInterval seconds) {
                                     UDKeyCommentLinkPreferNative: @NO,
                                     UDKeyShareLinkHost: @(ShareLinkHostDefault),
                                     UDKeyShowUserAvatars: @NO,
+                                    UDKeyShowCombinedFeedSubredditLabels: @YES,
                                     UDKeyUseProfileAvatarTabIcon: @NO,
                                     UDKeyHideTabBarTitles: @NO,
                                     UDKeyShowDetailedProfiles: @YES,
@@ -4003,6 +4080,7 @@ static void ApolloShowRedditRateLimitToast(NSTimeInterval seconds) {
     sShareLinkHost = [[NSUserDefaults standardUserDefaults] integerForKey:UDKeyShareLinkHost];
     if (sShareLinkHost < ShareLinkHostDefault || sShareLinkHost > ShareLinkHostFXReddit) sShareLinkHost = ShareLinkHostDefault;
     sShowUserAvatars = [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyShowUserAvatars];
+    sShowCombinedFeedSubredditLabels = [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyShowCombinedFeedSubredditLabels];
     sUseProfileAvatarTabIcon = [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyUseProfileAvatarTabIcon];
     sHideTabBarTitles = [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyHideTabBarTitles];
     ApolloNormalizeNativeHideUsernameForIconOnlyTabBar();
@@ -4365,6 +4443,7 @@ static void ApolloShowRedditRateLimitToast(NSTimeInterval seconds) {
     sTrendingSubredditsSource = (NSString *)[[NSUserDefaults standardUserDefaults] objectForKey:UDKeyTrendingSubredditsSource];
     sTrendingSubredditsLimit = (NSString *)[[NSUserDefaults standardUserDefaults] objectForKey:UDKeyTrendingSubredditsLimit];
     sRecentlyVisitedSubredditsLimit = [[NSUserDefaults standardUserDefaults] stringForKey:UDKeyRecentlyVisitedSubredditsLimit] ?: @"5";
+    sCustomFeedSource = (NSString *)[[NSUserDefaults standardUserDefaults] objectForKey:UDKeyCustomFeedSource];
 
     // Launch hooks are cache-only and fail open until this off-main seed lands.
     // The seed also queues refreshes after loading the last-known-good values.

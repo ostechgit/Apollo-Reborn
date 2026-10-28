@@ -5424,6 +5424,140 @@ struct CDStruct_90e057aa { CGSize min; CGSize max; };
 
 %end
 
+// MARK: - Combined-feed subreddit labels
+//
+// Custom Feed Source (r/customfeed) combines many real subreddits into one
+// synthetic "+"-joined listing (see Tweak.xm's ApolloRandomFeedRewrittenRequest).
+// Apollo has no concept of this -- as far as its own code is concerned it's
+// just viewing one named subreddit like any other, so it never shows which
+// subreddit an individual post actually came from (that per-post label is
+// Apollo-native ONLY for Home/Popular/All/multireddits, which this must not
+// duplicate). This appends " • r/<subreddit>" to the post's own "by
+// <username>" byline text node -- reusing the exact same byline-resolution
+// (ApolloResolveAuthorNodeSubtree/ApolloBestAuthorTextNode) and attributed-
+// string machinery the inline avatar feature above uses -- whenever a post's
+// real subreddit (RDKLink.subreddit) doesn't match the view controller's own
+// nominal subreddit (nav title), which is exactly the situation a combined
+// feed produces and a normal single-subreddit view never does.
+//
+// Gated to PostsType tag 0 ("named subreddit", the same tag CustomFeed and a
+// real single subreddit share -- see kApolloPostsTypeSubreddit in
+// ApolloSubredditHeaders.xm) so this can never fire for Home/Popular/All
+// (different tags, and already natively labeled) or Random/RandNSFW (tag 5 --
+// and by the time a post renders there, it's already been resolved to one
+// real subreddit, so there'd be no mismatch to detect anyway).
+
+static NSString *const kApolloCombinedFeedSubredditLabelMarkerAttributeName = @"ApolloCombinedFeedSubredditLabel";
+
+// PostsType is a Swift enum stored inline in the `currentPostsType` ivar; its
+// case tag is the byte at offset 0x20 of that storage -- duplicated from
+// ApolloSubredditHeaders.xm's kApolloPostsTypeTagOffset/ApolloSubredditPostsTypeTag
+// rather than shared via header, matching this file's existing pattern of
+// self-contained static helpers.
+static BOOL ApolloViewControllerIsNamedSubredditFeed(id viewController) {
+    if (!viewController) return NO;
+    Ivar ivar = class_getInstanceVariable([viewController class], "currentPostsType");
+    if (!ivar) return NO;
+    ptrdiff_t offset = ivar_getOffset(ivar);
+    uint8_t tag = 0xFF;
+    memcpy(&tag, (uint8_t *)(__bridge void *)viewController + offset + 0x20, sizeof(tag));
+    return tag == 0;
+}
+
+// Minimal forward declaration of Texture's own closestViewController --
+// mirrors ApolloTagFilters.xm's identical ApolloTagDisplayNode declaration.
+@interface ApolloCombinedFeedDisplayNode : UIResponder
+@property (nonatomic, readonly, nullable) UIViewController *closestViewController;
+@end
+
+static UIViewController *ApolloViewControllerForCell(id cell) {
+    if (!cell) return nil;
+    @try {
+        UIViewController *viewController = [(ApolloCombinedFeedDisplayNode *)cell closestViewController];
+        if (viewController) return viewController;
+    } @catch (__unused id exception) {}
+    return nil;
+}
+
+static NSString *ApolloCombinedFeedNormalizedSubredditName(NSString *name) {
+    if (![name isKindOfClass:[NSString class]]) return nil;
+    NSString *clean = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([clean hasPrefix:@"/r/"] || [clean hasPrefix:@"/R/"]) clean = [clean substringFromIndex:3];
+    if ([clean hasPrefix:@"r/"] || [clean hasPrefix:@"R/"]) clean = [clean substringFromIndex:2];
+    return clean.length > 0 ? clean.lowercaseString : nil;
+}
+
+static NSString *ApolloSubredditFromLinkModel(id link) {
+    if (!link) return nil;
+    SEL subredditSEL = @selector(subreddit);
+    if (![link respondsToSelector:subredditSEL]) return nil;
+    id (*msgSend)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+    id value = msgSend(link, subredditSEL);
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+// Strips any previously-injected label before (maybe) adding the current one,
+// rather than just checking "already labeled" -- so a reused/rebound cell
+// showing a different post can't end up displaying a stale subreddit name
+// left over from its previous content.
+static void ApolloUpdateCombinedFeedSubredditLabelOnTextNode(id textNode, NSString *subreddit) {
+    NSAttributedString *existing = ApolloAttributedTextForNode(textNode);
+    if (!existing) return;
+
+    NSMutableAttributedString *stripped = [existing mutableCopy];
+    __block NSRange markerRange = NSMakeRange(NSNotFound, 0);
+    [existing enumerateAttribute:kApolloCombinedFeedSubredditLabelMarkerAttributeName
+                          inRange:NSMakeRange(0, existing.length)
+                          options:0
+                       usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (value) { markerRange = range; *stop = YES; }
+    }];
+    if (markerRange.location != NSNotFound) {
+        [stripped deleteCharactersInRange:markerRange];
+    }
+
+    if (subreddit.length > 0) {
+        NSDictionary *baseAttributes = stripped.length > 0 ? [stripped attributesAtIndex:stripped.length - 1 effectiveRange:nil] : @{};
+        NSMutableDictionary *labelAttributes = [baseAttributes mutableCopy];
+        labelAttributes[NSForegroundColorAttributeName] = [UIColor secondaryLabelColor];
+        labelAttributes[kApolloCombinedFeedSubredditLabelMarkerAttributeName] = @YES;
+        NSAttributedString *label = [[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@" • r/%@", subreddit] attributes:labelAttributes];
+        [stripped appendAttributedString:label];
+    }
+
+    // No-op if nothing actually changed, so repeated -layout passes for an
+    // unchanged cell don't force unnecessary relayout.
+    if ([stripped isEqualToAttributedString:existing]) return;
+    ApolloSetAttributedTextForNode(textNode, stripped);
+    ApolloNodeSetNeedsLayout(textNode);
+}
+
+static void ApolloApplyCombinedFeedSubredditLabel(id cell, NSString *linkIvarName) {
+    if (!sShowCombinedFeedSubredditLabels) return;
+
+    id link = ApolloObjectIvarValue(cell, linkIvarName);
+    NSString *subreddit = ApolloSubredditFromLinkModel(link);
+    if (subreddit.length == 0) return;
+
+    UIViewController *viewController = ApolloViewControllerForCell(cell);
+    if (!ApolloViewControllerIsNamedSubredditFeed(viewController)) return;
+
+    NSString *navTitle = viewController.navigationItem.title.length > 0 ? viewController.navigationItem.title : viewController.title;
+    NSString *normalizedNavTitle = ApolloCombinedFeedNormalizedSubredditName(navTitle);
+    NSString *normalizedPostSubreddit = ApolloCombinedFeedNormalizedSubredditName(subreddit);
+    if (normalizedNavTitle.length == 0 || normalizedPostSubreddit.length == 0) return;
+    // Post's subreddit matches the view's own subreddit -- a normal
+    // single-subreddit feed, not a combined one. Nothing to add.
+    if ([normalizedNavTitle isEqualToString:normalizedPostSubreddit]) return;
+
+    NSString *username = ApolloUsernameFromCell(cell, linkIvarName);
+    if (username.length == 0) return;
+    id textNode = ApolloBestAuthorTextNode(cell, username);
+    if (!textNode) return;
+
+    ApolloUpdateCombinedFeedSubredditLabelOnTextNode(textNode, subreddit);
+}
+
 %hook _TtC6Apollo17LargePostCellNode
 
 // Like CommentCellNode's above: ahead of display, so the batch (Reduce Rate
@@ -5436,8 +5570,17 @@ struct CDStruct_90e057aa { CGSize min; CGSize max; };
 
 - (void)didLoad {
     %orig;
-    if (!sShowUserAvatars) return;
-    ApolloApplyAvatarToCellWithDiameter(self, ApolloUsernameFromCell(self, @"link"), ApolloFeedInlineAvatarDiameter);
+    if (sShowUserAvatars) ApolloApplyAvatarToCellWithDiameter(self, ApolloUsernameFromCell(self, @"link"), ApolloFeedInlineAvatarDiameter);
+    ApolloApplyCombinedFeedSubredditLabel(self, @"link");
+}
+
+- (void)layout {
+    %orig;
+    // Re-applies on every layout pass (cheap no-op when nothing changed) so a
+    // reused/rebound cell picks up the correct subreddit for its new content,
+    // the same reuse-handling -layout hook ApolloTagFilters.xm uses on these
+    // same classes.
+    ApolloApplyCombinedFeedSubredditLabel(self, @"link");
 }
 
 %end
@@ -5446,8 +5589,13 @@ struct CDStruct_90e057aa { CGSize min; CGSize max; };
 
 - (void)didLoad {
     %orig;
-    if (!sShowUserAvatars) return;
-    ApolloApplyAvatarToCellWithDiameter(self, ApolloUsernameFromCell(self, @"link"), ApolloFeedInlineAvatarDiameter);
+    if (sShowUserAvatars) ApolloApplyAvatarToCellWithDiameter(self, ApolloUsernameFromCell(self, @"link"), ApolloFeedInlineAvatarDiameter);
+    ApolloApplyCombinedFeedSubredditLabel(self, @"link");
+}
+
+- (void)layout {
+    %orig;
+    ApolloApplyCombinedFeedSubredditLabel(self, @"link");
 }
 
 %end
@@ -5462,8 +5610,13 @@ struct CDStruct_90e057aa { CGSize min; CGSize max; };
 
 - (void)didLoad {
     %orig;
-    if (!sShowUserAvatars) return;
-    ApolloApplyAvatarToCellWithDiameter(self, ApolloUsernameFromCell(self, @"link"), ApolloFeedInlineAvatarDiameter);
+    if (sShowUserAvatars) ApolloApplyAvatarToCellWithDiameter(self, ApolloUsernameFromCell(self, @"link"), ApolloFeedInlineAvatarDiameter);
+    ApolloApplyCombinedFeedSubredditLabel(self, @"link");
+}
+
+- (void)layout {
+    %orig;
+    ApolloApplyCombinedFeedSubredditLabel(self, @"link");
 }
 
 %end

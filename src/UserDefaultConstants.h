@@ -79,6 +79,11 @@ static NSString *const UDKeyTrendingSubredditsLimit = @"TrendingSubredditsLimit"
 static NSString *const UDKeyRecentlyVisitedSubredditsLimit = @"RecentlyVisitedSubredditsLimit";
 // Search landing sections, ordered by stable identifiers. Default trending/random/recent.
 static NSString *const UDKeySearchTabSectionOrder = @"SearchTabSectionOrder";
+// Line-separated subreddit list fetched from this URL and combined into a single
+// /r/sub1+sub2+.../ feed when the user navigates to /r/customfeed. Unlike a native
+// saved multireddit (subject to Reddit's server-side subscription-object cap), this
+// is a plain "+"-combined listing URL with no subscription object behind it.
+static NSString *const UDKeyCustomFeedSource = @"CustomFeedSource";
 // Master toggle for subreddit list polish/enhancements. Default YES. Feed
 // Shortcuts is independent; Modern Subreddit Dividers remains a sub-option.
 static NSString *const UDKeySubredditListEnhancements = @"SubredditListEnhancements";
@@ -119,6 +124,31 @@ static NSString *const UDKeyHiddenModeratorSubreddits = @"HiddenModeratorSubredd
 // Apollo-native subreddit-list icon preference, relocated from Appearance.
 static NSString *const UDKeyShowSubredditIconsInSubredditList = @"ShowSubredditIconsInSubredditList";
 static NSString *const ApolloSubredditListIconsChangedNotification = @"com.christianselig.SubredditListShowSubredditIconsChanged";
+// Whole SECTION headers hidden from the Subreddits list index -- distinct from
+// the per-item hidden list above and from Apollo's own native row-hiding
+// (HideRPopularRedditList/HideRAllRedditList/HideModeratorRedditList, which
+// hide the Home/Popular/All/Moderator Posts pseudo-rows, not these grouped
+// sections below them). Array of section-kind strings, a subset of
+// {"Favorites", "Multireddits", "Moderator"}. Deliberately a single flat array
+// so a future settings-preset/bundle feature can snapshot/restore it as one
+// value.
+static NSString *const UDKeyHiddenSubredditIndexSections = @"HiddenSubredditIndexSections";
+// Show a "Random"/"RandNSFW"/"CustomFeed" row (each independently toggleable)
+// appended to the existing top pseudo-row section on the Subreddits list
+// (alongside Home/Popular/All/Moderator Posts), without requiring any of them
+// to be added to the user's real Favorites. Default NO -- if enabled, show
+// it; if disabled, hide it, same as Apollo's own native pseudo-rows.
+static NSString *const UDKeyShowRandomInSubredditsList = @"ShowRandomInSubredditsList";
+static NSString *const UDKeyShowRandNsfwInSubredditsList = @"ShowRandNsfwInSubredditsList";
+static NSString *const UDKeyShowCustomFeedInSubredditsList = @"ShowCustomFeedInSubredditsList";
+// Appends " • r/<subreddit>" to a post's "by <username>" byline when the post
+// is shown in a combined multi-subreddit feed (currently: Custom Feed Source)
+// where Apollo doesn't natively know which subreddit an individual post came
+// from. Default YES -- narrow-scoped by design (see
+// ApolloViewControllerIsNamedSubredditFeed/nav-title-mismatch gating in
+// ApolloUserAvatars.xm), so it never fires for Home/Popular/All/multireddits
+// (which already show this natively) or a normal single-subreddit view.
+static NSString *const UDKeyShowCombinedFeedSubredditLabels = @"ShowCombinedFeedSubredditLabels";
 static NSString *const UDKeyModernSubredditDividers = @"ModernSubredditDividers";
 static NSString *const ApolloModernSubredditDividersChangedNotification = @"ApolloModernSubredditDividersChangedNotification";
 // Hides the description subtitles under the subreddit list's built-in feed rows

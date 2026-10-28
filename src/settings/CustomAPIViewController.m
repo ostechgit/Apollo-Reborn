@@ -41,6 +41,7 @@
 #import "ApolloDuoRail.h"
 #import "ApolloDuoCompatibility.h"
 #import "ApolloDuoSplitView.h"
+#import "ApolloHideSubredditSectionsViewController.h"
 #import "ApolloTagFilters.h"
 #import "ApolloBadgeBookScraper.h"   // ApolloBadgeBookInvalidate() — Clear Tweak Caches
 #import "ApolloUserProfileCache.h"
@@ -571,6 +572,7 @@ typedef NS_ENUM(NSInteger, Tag) {
     TagTrendingSubredditsSource,
     TagRandomSubredditsSource,
     TagRandNsfwSubredditsSource,
+    TagCustomFeedSource,
     TagTrendingLimit,
     TagRecentlyVisitedLimit,
     TagReadPostMaxCount,
@@ -3276,6 +3278,18 @@ static NSInteger ApolloHeaderStylePickerValue(NSInteger index, BOOL blurAvailabl
         }
                                   onSelect:nil];
 
+    ApolloSettingsRow *customFeedSource =
+        [ApolloSettingsRow customRowWithID:@"sub.customFeedSource"
+                                      cell:^UITableViewCell *(__unused UITableView *tableView, __unused ApolloSettingsRow *row) {
+            return [weakSelf stackedTextFieldCellWithIdentifier:@"Cell_Sub_CustomFeed"
+                                                          label:@"Custom Feed Source (r/customfeed)"
+                                                    placeholder:@"(empty)"
+                                                           text:sCustomFeedSource
+                                                            tag:TagCustomFeedSource]
+                ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        }
+                                  onSelect:nil];
+
     return @[
         [ApolloSettingsSection sectionWithTitle:@"Search Tab"
                                          footer:nil
@@ -3285,8 +3299,59 @@ static NSInteger ApolloHeaderStylePickerValue(NSInteger index, BOOL blurAvailabl
                                            rows:@[ trendingLimit, recentlyVisitedLimit ]],
         [ApolloSettingsSection sectionWithTitle:@"Subreddit Sources"
                                          footer:nil
-                                           rows:@[ trendingSource, randomSource, randNSFWSource ]],
+                                           rows:@[ trendingSource, randomSource, randNSFWSource, customFeedSource ]],
     ];
+}
+
+- (ApolloSettingsSection *)buildSubredditsListRowsSection {
+    ApolloSettingsRow *showRandom =
+        [ApolloSettingsRow switchRowWithID:@"sub.showRandomRow"
+                                     title:@"Show Random Subreddit"
+                                      isOn:^BOOL { return [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyShowRandomInSubredditsList]; }
+                                  onToggle:^(UISwitch *sender) {
+            [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:UDKeyShowRandomInSubredditsList];
+        }];
+
+    ApolloSettingsRow *showRandNSFW =
+        [ApolloSettingsRow switchRowWithID:@"sub.showRandNSFWRow"
+                                     title:@"Show RandNSFW Subreddit"
+                                      isOn:^BOOL { return [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyShowRandNsfwInSubredditsList]; }
+                                  onToggle:^(UISwitch *sender) {
+            [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:UDKeyShowRandNsfwInSubredditsList];
+        }];
+
+    ApolloSettingsRow *showCustomFeed =
+        [ApolloSettingsRow switchRowWithID:@"sub.showCustomFeedRow"
+                                     title:@"Show Custom Feed Subreddit"
+                                      isOn:^BOOL { return [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyShowCustomFeedInSubredditsList]; }
+                                  onToggle:^(UISwitch *sender) {
+            [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:UDKeyShowCustomFeedInSubredditsList];
+        }];
+
+    ApolloSettingsRow *combinedFeedLabels =
+        [ApolloSettingsRow switchRowWithID:@"sub.combinedFeedLabels"
+                                     title:@"Show Subreddit in Combined Feeds"
+                                      isOn:^BOOL { return [[NSUserDefaults standardUserDefaults] boolForKey:UDKeyShowCombinedFeedSubredditLabels]; }
+                                  onToggle:^(UISwitch *sender) {
+            sShowCombinedFeedSubredditLabels = sender.isOn;
+            [[NSUserDefaults standardUserDefaults] setBool:sShowCombinedFeedSubredditLabels forKey:UDKeyShowCombinedFeedSubredditLabels];
+        }];
+
+    ApolloSettingsRow *hideSections =
+        [self hubDisclosureRowWithID:@"sub.hideSections"
+                               title:@"Hide Subreddit Sections"
+                            subtitle:^NSString * {
+            NSInteger hiddenCount = [[NSUserDefaults standardUserDefaults] stringArrayForKey:UDKeyHiddenSubredditIndexSections].count;
+            return hiddenCount > 0 ? [NSString stringWithFormat:@"%ld Hidden", (long)hiddenCount] : nil;
+        }
+                                push:^UIViewController * {
+            return [[ApolloHideSubredditSectionsViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];
+        }];
+
+    return [ApolloSettingsSection sectionWithTitle:@"Subreddit List Rows"
+                                            footer:@"Add Random, RandNSFW, or the Custom Feed as rows at the top of the Subreddits list without favoriting them, and hide the built-in sections you don't use. Show Subreddit in Combined Feeds appends each post's real subreddit to its byline in the Custom Feed."
+                                              rows:@[ showRandom, showRandNSFW, showCustomFeed,
+                                                      hideSections, combinedFeedLabels ]];
 }
 
 - (ApolloSettingsSection *)buildNotificationBackendSection {
@@ -4561,6 +4626,10 @@ static NSURL *ApolloWriteExportedLogFile(NSString *logs) {
         textField.text = [textField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
         sRandNsfwSubredditsSource = textField.text;
         [[NSUserDefaults standardUserDefaults] setValue:sRandNsfwSubredditsSource forKey:UDKeyRandNsfwSubredditsSource];
+    } else if (textField.tag == TagCustomFeedSource) {
+        textField.text = [textField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        sCustomFeedSource = textField.text;
+        [[NSUserDefaults standardUserDefaults] setValue:sCustomFeedSource forKey:UDKeyCustomFeedSource];
     } else if (textField.tag == TagTrendingLimit) {
         textField.text = [textField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
         sTrendingSubredditsLimit = textField.text;
@@ -5386,6 +5455,7 @@ static NSURL *ApolloWriteExportedLogFile(NSString *logs) {
 }
 - (NSArray<ApolloSettingsSection *> *)buildForm {
     return [@[ [self buildSubredditsMainSection],
+               [self buildSubredditsListRowsSection],
                [self buildSubredditsLayoutSection] ]
         arrayByAddingObjectsFromArray:[self buildSubredditsSearchSections]];
 }

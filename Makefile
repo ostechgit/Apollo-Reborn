@@ -319,6 +319,8 @@ ApolloReborn_FILES = \
     $(SRC_DIR)/ApolloSubredditListLaunchSettle.xm \
     $(SRC_DIR)/ApolloQuickActions.xm \
     $(SRC_DIR)/ApolloHideModSubreddits.xm \
+    $(SRC_DIR)/ApolloHideSubredditSections.xm \
+    $(SRC_DIR)/ApolloHideSubredditSectionsViewController.m \
     $(SRC_DIR)/ApolloMultiredditEdit.xm \
     $(SRC_DIR)/ApolloFollowingSection.xm \
     $(SRC_DIR)/ApolloFavoriteConfirm.xm \

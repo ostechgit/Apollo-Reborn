@@ -35,6 +35,7 @@ extern NSString *sRandNsfwSubredditsSource;
 extern NSString *sTrendingSubredditsSource;
 extern NSString *sTrendingSubredditsLimit;
 extern NSString *sRecentlyVisitedSubredditsLimit;
+extern NSString *sCustomFeedSource;
 
 extern BOOL sBlockAnnouncements;
 extern BOOL sAutomaticBackupsEnabled;
@@ -121,6 +122,9 @@ float ApolloSanitizedHoldSpeed(float value);
 extern BOOL sProxyImgurDDG;
 extern BOOL sImgurAlbumFallbackProxies;
 extern BOOL sShowUserAvatars;
+// Appends " • r/<subreddit>" to a post's byline when it's shown in a combined
+// multi-subreddit feed (Custom Feed Source). See UDKeyShowCombinedFeedSubredditLabels.
+extern BOOL sShowCombinedFeedSubredditLabels;
 extern BOOL sUseProfileAvatarTabIcon;
 // Hide the visible main-tab labels while retaining/restoring the underlying
 // UITabBarItem titles. Opt-in; default OFF via registerDefaults.

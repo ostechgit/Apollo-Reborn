@@ -11,6 +11,7 @@ NSString *sRandNsfwSubredditsSource = nil;
 NSString *sTrendingSubredditsSource = nil;
 NSString *sTrendingSubredditsLimit = nil;
 NSString *sRecentlyVisitedSubredditsLimit = @"5";
+NSString *sCustomFeedSource = nil;
 
 BOOL sBlockAnnouncements = NO;
 BOOL sAutomaticBackupsEnabled = NO;
@@ -44,9 +45,11 @@ BOOL sFeedVideoScrollSmoothing = YES; // effective default ON via registerDefaul
 BOOL sVideoHoldSpeedEnabled = YES;   // effective default ON via registerDefaults (UDKeyVideoHoldSpeedEnabled)
 float sVideoHoldSpeed = 2.0f;        // effective default 2.0× via registerDefaults (UDKeyVideoHoldSpeed)
 
+
 BOOL sProxyImgurDDG = NO;
 BOOL sImgurAlbumFallbackProxies = YES;
 BOOL sShowUserAvatars = NO;
+BOOL sShowCombinedFeedSubredditLabels = YES;   // effective default ON via registerDefaults (UDKeyShowCombinedFeedSubredditLabels)
 BOOL sUseProfileAvatarTabIcon = NO;
 BOOL sHideTabBarTitles = NO;
 BOOL sShowDetailedProfiles = YES;   // effective default ON via registerDefaults (UDKeyShowDetailedProfiles)
