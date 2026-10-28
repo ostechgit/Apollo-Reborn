@@ -134,7 +134,12 @@ if [[ "$DO_BUILD" == 1 ]]; then
     # Theos's simulator target defaults TARGET_CODESIGN_FLAGS to a real
     # 'Apple Development' identity, which not every machine's keychain has.
     # Ad-hoc is all the sim needs — we re-sign ad-hoc after copying anyway.
+    # ARCHS forced on the command line: stock Theos common.mk overrides the
+    # Makefile's `export ARCHS = arm64` with `arm64 arm64e`, and there is no
+    # arm64e simulator Swift stdlib (same trap as the device build's
+    # `make package ARCHS=arm64`).
     make TARGET="simulator:clang:latest:${DEPLOY_MIN}" \
+         ARCHS=arm64 \
          TARGET_CODESIGN_FLAGS="--sign -" \
          LOGOS_DEFAULT_GENERATOR=internal \
          APOLLO_SIM_BUILD=1 -j"$(sysctl -n hw.ncpu)"
