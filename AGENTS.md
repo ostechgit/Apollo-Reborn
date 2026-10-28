@@ -98,6 +98,36 @@ xcrun simctl spawn "$(cat .sim/device.txt)" log show --last 2m --predicate 'subs
 
 **Simulator limits — use a device IPA for these:** APNs push (so Live Activities push-to-start can't be exercised in the sim), the FFmpeg v.redd.it CMAF/MPEG-TS audio remux (stubbed out), and anything genuinely device-only. (A signed-in user account *does* work in the sim now, via the keychain-capture backup above — provided the backup was exported by a build with that feature.) The sim *is* the same iOS 26.x family as the test device, so Liquid Glass nav-bar/tab-bar behavior reproduces faithfully.
 
+### Sideloading a rebranded real-device test build from a stock Apollo IPA
+
+This is the from-scratch path for when you have no persistent `Apollo-base.ipa` shell yet (the quick-start `patch.sh` → `build-ipa.sh` commands above assume one already exists) and want a device install that coexists with the App Store Apollo.
+
+**1. Get a stock, decrypted Apollo IPA.** This repo does not host or bundle Apollo's IPA — Apollo is Christian Selig's app, delisted from the App Store in 2023. CI's `build-ipa.yml` workflow defaults its `apollo_ipa_url` input to `https://downloads.apolloreborn.app/apollobase.ipa`, a base IPA the Apollo-Reborn project maintains; that's the fastest path if you don't have your own extracted copy, but treat any base-IPA source as something *you* fetch and name explicitly rather than something an agent should infer/download unprompted. Verify integrity after downloading: `unzip -t Apollo.ipa`.
+
+**2. Local device builds may need `ARCHS=arm64` forced.** The Makefile declares `export ARCHS = arm64` at the top, but a stock Theos install's `$THEOS/makefiles/common.mk` unconditionally sets `ARCHS = arm64 arm64e` *after* that (plain `=`, not `?=`), so it silently wins and the build attempts an arm64e slice too. The checked-in FFmpegKit static libs (`modules/ffmpeg-kit/`) are arm64-only by design (per that submodule's own README), so the arm64e slice fails to link with `Undefined symbols ... _OBJC_CLASS_$_FFmpegKit`. Fix: force the arch on the command line, which has the highest precedence over both `?=` and plain `=` in included makefiles:
+```bash
+make package FINALPACKAGE=1 ARCHS=arm64
+```
+This isn't a workaround/hack — `arm64` is genuinely the only architecture this project ships, and the only one any current iPhone needs. Apple doesn't require third-party apps or injected tweaks to carry a separate `arm64e` slice even on arm64e-capable hardware (A12+, including the A17 Pro in an iPhone 15 Pro/Pro Max) — `arm64` is the universal 64-bit slice.
+
+**3. Inject the tweak BEFORE patching, for a from-scratch stock IPA — the opposite order from the quick-start above.** The quick-start's `patch.sh` → `build-ipa.sh` order assumes a locally-prepared, pre-injected `Apollo-base.ipa` shell for fast iteration (`build-ipa.sh`'s `inject-deb-local.sh` fast path only works against that shell). Starting from a truly stock IPA, mirror CI's order instead:
+```bash
+./build-ipa.sh --ipa Apollo.ipa --deb ./packages/<tweak>.deb -o injected.ipa   # falls back to `cyan` (pyzule-rw) for a stock IPA
+./patch.sh injected.ipa --liquid-glass -o glass.ipa                           # Liquid Glass AFTER injection, not before
+```
+`build-ipa.sh` printing `Error: IPA is not already prepared to load: ...` and falling back to `cyan` is expected for a stock IPA, not a failure. Install `cyan` if missing: `pip install "https://github.com/asdfzxcvbn/pyzule-rw/archive/refs/tags/v1.4.4.zip"` (CI does this in a venv). A `unzip: cannot find ... injected.ipa` line mid-run from `build-ipa.sh`'s own slice-fix step is cosmetic — trust `unzip -t injected.ipa` after the run finishes, not that inline warning.
+
+**4. Rebrand to a bundle ID you own** so the test build can coexist on-device with the App Store version:
+```bash
+./scripts/rebrand-ipa.sh glass.ipa com.yourname.YourAppName -o Final.ipa
+```
+Rewrites `CFBundleIdentifier` on the app and every `.appex` (suffix preserved, e.g. `.Apollofari`, `.AthenaWidget`), while deliberately leaving `group.com.christianselig.apollo` and the `apollo://` URL scheme untouched (see the script's own header comment for why — the tweak hardcodes the app group regardless of bundle ID, and the URL scheme is a literal, not derived from it).
+
+**5. Sign and install.** Any signer produces a basic working install, but two things vary by signer:
+- **Push notifications** require an explicit App ID with Push enabled under a team *you* control. A shared enterprise-cert mass-signing service (Signulous and similar) can't give you that; AltStore/SideStore with your own Apple ID can.
+- **The "Open in Apollo" share action** needs the appex main-binary code-signing flag set. AltStore/SideStore, Xcode, and Apple's own `codesign` set it; `zsign`-based signers (many paid mass-signing services, some Sideloadly/Feather configurations) don't, and the appex silently no-ops at launch instead of erroring. Fix after the fact with `scripts/resign-ipa-codesign.sh <input.ipa> "<your signing identity>" -o Resigned.ipa`, then install the **resigned** output directly (`ideviceinstaller`, Apple Configurator drag-install, `xcrun devicectl device install app`) — re-signing it again through the original signer undoes the fix.
+- If a previous test build under a different bundle ID is already installed, uninstall it first to avoid an `apollo://` scheme collision between the two.
+
 ## Project Structure
 
 ### Core Tweak Modules
@@ -207,6 +237,35 @@ Testing: with FLEX debugging enabled, Settings → Privacy → Crash Reports gai
 
 No automated test suite, must be validated manually.
 
+## Contributing From This Environment
+
+- `origin` is the upstream `Apollo-Reborn/Apollo-Reborn` repo itself, not a personal fork — pushing a branch directly to `origin` fails with a 403 unless you're an org member with write access. To open a PR: fork it (`gh repo fork Apollo-Reborn/Apollo-Reborn --default-branch-only`), push your branch to the fork, then `gh pr create --repo Apollo-Reborn/Apollo-Reborn --head <your-username>:<branch>`.
+- Pushing to a fork over HTTPS can fail here with `git: 'credential-gh' is not a git command` (gh's git credential helper isn't wired up for HTTPS pushes in this environment) — push over SSH (`git@github.com:<user>/Apollo-Reborn.git`) instead, which works via `gh`'s configured SSH key.
+- To carve an isolated commit/PR for one fix out of a larger dirty working tree (e.g. several unrelated in-progress features already sitting uncommitted in `src/`), use `git worktree add <path> -b <branch> origin/main` rather than stashing — it's a separate checkout, so editing/building/committing there can't touch or reorder the main working tree's uncommitted changes. `git submodule update --init --recursive` still needs to be re-run inside the new worktree before `make package` will find `modules/`. Remove with `git worktree remove <path> --force` when done; the branch and its commits survive.
+
+## Feature Changelog (agent-added)
+
+Features added via agent-assisted sessions, kept here so they're easy to find without digging through git history.
+
+- **Feed Video Scrubber: GIF fallback strip** — upstream's scrubber (`src/ApolloFeedVideoScrubber.xm`, #938) gates `pointInside:` on Apollo's native `videoGIFProgressView`, which feed GIF-mp4s mostly never get (Apollo's creation of it is async and usually skipped — the finding originally documented in the since-removed `ApolloInlineMediaScrub.xm`). `ApolloFeedScrubFallbackStrip` now stands in: installed by `EnsureScrubStrip` on every media cell, shown only when a playable AVPlayer exists AND the native strip is absent (a 4 Hz weak-self NSTimer tick re-resolves the player each time — feed players churn; nothing cached), hidden the moment the native strip materializes. `pointInside:` accepts either bar; `trackFingerOnNativeStrip:` drives the fallback's fill during a drag (tick suspended via `suspendAutoUpdates`, reset in `finishScrub` + dealloc backstop). Good candidate to PR upstream.
+
+- **Custom Feed Source (`r/customfeed`)** — combines every subreddit in a user-supplied plaintext list into a single feed via Reddit's `/r/sub1+sub2+.../` URL combinator, navigated to by visiting `r/customfeed` in-app. Modeled directly on the existing Random/RandNSFW Source feature (same source-URL format, one subreddit name per line, no `/r/` prefix) but joins the whole list with `+` instead of picking one at random. Unlike a native saved multireddit (which is a real subscription object fetched via `/api/multi/user/<name>/...` and has historically been subject to Reddit's subscriber-count cap), this is a plain ad-hoc combined listing URL with no subscription object behind it — so it isn't subject to that cap. The list is soft-capped at 400 subreddits (truncated with an `ApolloLog` warning, not silently dropped or failed) to keep the resulting request URL a sane length; Reddit's actual limit on the `+` combinator is much higher and undocumented.
+  - Setting: **Subreddits → Subreddit Sources → Custom Feed Source**, in `src/settings/CustomAPIViewController.m` (`TagCustomFeedSource`, row `sub.customFeedSource` in upstream's `buildSubredditsSearchSections`; the list-row/label toggles live in `buildSubredditsListRowsSection`, shown right after the "Subreddit List" section). Ported to the ApolloSettingsForm architecture during the v3.6.0 merge; re-placed into upstream's restructured Subreddits screen during the 4.0.0 rebuild (upstream overrides that section's footer by title, so the row carries no footer of its own).
+  - State: `UDKeyCustomFeedSource` in `src/UserDefaultConstants.h`, `sCustomFeedSource` in `src/ApolloState.{h,m}`.
+  - Interception + combine logic: `src/Tweak.xm`, in the `NSURLSession dataTaskWithRequest:` hook (same request-rewrite site as `/r/random/` and `/r/randnsfw/`), plus prefetched alongside the other two sources in `initializeRandomSources()`.
+  - **Subreddits list row**: like Random/RandNSFW, a "CustomFeed" pseudo-row can be appended to the top pseudo-row section of the Subreddits list (alongside Home/Popular/All/Moderator Posts) without needing to be favorited — toggle **Subreddits → Subreddit List Rows → Show Custom Feed Subreddit** (`UDKeyShowCustomFeedInSubredditsList`, row `sub.showCustomFeedRow` in `src/settings/CustomAPIViewController.m`). Injected unconditionally the same way as Random/RandNSFW — no requirement that the combined feed's subreddits be followed. Implemented in `src/ApolloHideSubredditSections.xm`: `ApolloHideSubredditSectionsRandomItems()` appends `"CustomFeed"` when the toggle is on, and `ApolloHideSubredditSectionsGlyphForItem()` draws it a teal `square.stack.3d.up.fill` glyph (vs. purple/orange `shuffle` for Random/RandNSFW). Navigation reuses the same Favorites-row-borrowing trick as Random/RandNSFW — no new navigation code.
+  - **Coexisting with upstream's 4.0.0 Subreddits-list modules** (re-verified in the sim during the 4.0.0 rebuild):
+    - `ApolloFollowingSection.xm` (FOLLOWING section + section reordering) remaps visible↔native index paths. It is listed AFTER `ApolloHideSubredditSections.xm` in the Makefile, so its hooks install later and are OUTERMOST — this module's hooks therefore always see Apollo's NATIVE section numbers (0 = feed shortcuts, 1 = Favorites, …), which is exactly what the pseudo-row append (section 0) and the Favorites-borrowing navigation (`%orig` with section 1) assume. Keep that Makefile order; reversing it would make a pseudo-row tap open whatever the user's first reordered section is.
+    - Feed Shortcuts (`ApolloSubredditIndexPolish.xm`, Grid/Side-by-Side/Icon Dock layouts) infers "this account has no Moderator Posts row" from `-numberOfRowsInSection:0`, which the appended pseudo-rows inflate — so `ApolloSubredditIndexVisibleMetaFeedIndexes` subtracts `ApolloHideSubredditSectionsAppendedSection0RowCount()` (`src/ApolloHideSubredditSections.h`). Without it, on a non-moderator account the first pseudo-row is treated as the Moderator shortcut and collapsed into the grid.
+  - **Two request-interception bugs this pseudo-row exposed (fixed in `src/Tweak.xm`), worth remembering before touching Random/RandNSFW/CustomFeed again:**
+    1. **Case-sensitive path matching missed some of Apollo's own requests.** Debug-logging every request Apollo made when navigating to a favorited pseudo-subreddit named "CustomFeed" showed it builds *different* requests with *different* casing for the *same* navigation: a `best.json` preview call as `/r/customfeed/best.json` (lowercased), but the `hot`/`about.json` calls that actually populate the feed as `/r/CustomFeed/hot` and `/r/CustomFeed/about.json` (display-name case preserved). The old `hasPrefix:@"/r/customfeed/"` check is case-sensitive, so it silently missed the latter two — the request fell through to `%orig` unmodified, hit real Reddit for a subreddit that doesn't exist, and Apollo showed its native "has been set to private" fallback with no posts. Random/RandNSFW happened to still "work" only because their `best.json` call (which *did* match) was enough to resolve to one real subreddit before anything else mattered. Fixed with `ApolloPathHasCaseInsensitivePrefix`/`ApolloReplaceCaseInsensitive`.
+    2. **The rewrite only lived in one of the two `NSURLSession dataTaskWithRequest:` hooks.** Apollo/AFNetworking routes different requests for the same navigation through *both* the plain `dataTaskWithRequest:` (delegate-based — AFNetworking's internal implementation) and `dataTaskWithRequest:completionHandler:` overloads. The random/randnsfw/customfeed rewrite only existed in the plain one; the completion-handler one (also hooked, for unrelated imgur/imgchest/reddit-media rewrites) had no such logic at all. The `hot`/`about.json` calls that actually populate the feed and back the "private" check go through the completion-handler variant, so even with case-insensitive matching this one on its own wouldn't have been enough. Fixed by extracting the whole rewrite into a shared `ApolloRandomFeedRewrittenRequest(NSURLRequest *)` helper and calling it from both hooks. If you add a *third* NSURLSession entry point later (e.g. `dataTaskWithURL:`), check whether Apollo's networking actually goes through it before assuming it's covered — don't assume one hook implies the others are too.
+    - **How this was actually diagnosed**: temporary `ApolloLog` calls at the top of both hooks, matching on `rangeOfString:@"customfeed" options:NSCaseInsensitiveSearch`, revealed the real request set (`os_log show --predicate 'subsystem == "apollofix"'` in the simulator). Don't guess at Apollo's request shapes from reading Objective-C call sites alone — Apollo's own networking is Swift and mostly opaque; log the actual URLs.
+  - **Per-post subreddit label in the byline** — since a combined feed mixes posts from many real subreddits, but Apollo (thinking it's viewing one named subreddit) never shows which one a given post came from the way it natively does for Home/Popular/All/multireddits. Appends `" • r/<subreddit>"` to the post's own "by `<username>`" byline text node. Implemented in `src/ApolloUserAvatars.xm` (reuses that file's existing byline-resolution/attributed-string machinery built for inline avatars — `ApolloResolveAuthorNodeSubtree`/`ApolloBestAuthorTextNode`/`ApolloAttributedTextForNode`/`ApolloSetAttributedTextForNode`), hooked into the same `_TtC6Apollo17LargePostCellNode`/`_TtC6Apollo19CompactPostCellNode`/`_TtC6Apollo22CommentsHeaderCellNode` classes the avatar feature already hooks (`-didLoad` for the initial apply, `-layout` to catch cell reuse/rebind — mirrors `ApolloTagFilters.xm`'s identical `-layout` re-apply pattern on the same classes, since `-didLoad` alone only fires once per node instance, not per content rebind).
+    - Setting: **Subreddits → Subreddit List Rows → Show Subreddit in Combined Feeds** (`UDKeyShowCombinedFeedSubredditLabels`, `sShowCombinedFeedSubredditLabels`, default **YES**). Safe to default on because the gating below makes it a no-op everywhere except a genuine combined feed.
+    - **Gating logic (the part worth re-reading before changing)**: reads the containing view controller's `currentPostsType` Swift-enum tag (byte at ivar offset `+0x20`, same technique as `ApolloSubredditHeaders.xm`'s `kApolloPostsTypeTagOffset` — duplicated locally rather than shared via header) and only proceeds when it's tag `0` ("named subreddit" — the same tag a real single subreddit *and* CustomFeed both report, since Apollo can't tell them apart). Within that, it compares the post's own `RDKLink.subreddit` against the view controller's nav title (normalized, case-insensitive) and only injects the label on a **mismatch** — which is structurally impossible for a real single-subreddit view (every post's subreddit trivially equals the view's own) but happens for *every* post in a combined feed (each post's real subreddit is never "CustomFeed"). This mismatch-based design means the feature never needs to hardcode "CustomFeed" anywhere, and automatically stays out of the way for Random/RandNSFW too (tag `5`, excluded outright, and moot anyway since they're resolved to one real subreddit before a post ever renders) and for Home/Popular/All/multireddits (different tags entirely, and already natively labeled by Apollo — this must never double up there).
+    - The containing view controller is found from the cell via Texture's own `closestViewController` (minimal local forward-declaration of the property, same pattern as `ApolloTagFilters.xm`'s `ApolloTagDisplayNode`/`ApolloTagPresenterForCell` — not a new technique).
+
 ## RE Notes
 
 ### Handy Hopper MCP Tools
@@ -220,6 +279,62 @@ No automated test suite, must be validated manually.
 - `Hopper/xrefs`: find references to a string or address
 - `Hopper/list_segments`, `Hopper/list_names`: quick orientation for the binary layout
 - `Hopper/procedure_callers`, `Hopper/procedure_callees`: trace call graphs (who calls this? what does this call?)
+
+### REA (Reverse-Engineering MCP) — Hopper & Ghidra Backends
+
+REA (`rea-agents` npm package; official sources are `morluto/rea`, rea.tools — the README warns about lookalike repos) is an MCP server + CLI that drives Hopper or Ghidra and returns pseudocode, assembly, strings, symbols and xrefs. It wraps the same engines as the manual workflows above as agent tools, and is registered for both Claude Code and OpenCode sessions. Use it for targeted questions — which method does X, what does this class's `.cxx_destruct` release, xrefs to a string — instead of driving Hopper by hand.
+
+**Installed components (all present on the owner's Mac):**
+
+| Component | Path / version | Notes |
+|---|---|---|
+| REA | `npx -y rea-agents@6.8.0 mcp` | needs Node 22.23.4+ / 24.22.1+ / 26.12.1+ |
+| Node for REA | `~/.nvm/versions/node/v24.22.1/bin` | must be explicit — `~/.local/bin/node` is Hermes' Node 26.8.1 and PATH-fronts Homebrew node via `.zprofile`, and the MCP registration launches plain `npx` |
+| Hopper (demo) | `~/Applications/Hopper Disassembler.app` | `HOPPER_LAUNCHER_PATH` → `…/Contents/MacOS/hopper`; demo is sufficient (30-min sessions, no save/export, debugger off — export never mattered: REA on macOS refuses saved `.hop` files and always re-analyses from scratch) |
+| Ghidra | `~/Applications/ghidra_12.1.4_PUBLIC` | REA pins `SUPPORTED_GHIDRA_VERSION = "12.1.4"` (`GhidraReleasePolicy.ts`); newer 12.x is accepted but stamps an "untested" note on every result |
+| JDK | `brew openjdk@21` | default `java` is Corretto 17 (too old); `/usr/libexec/java_home` doesn't know the Homebrew JDK — set `JAVA_HOME` explicitly |
+
+**Registration.** The REA entry in `~/.claude.json` carries its own `env` (this is what Claude launches — zshrc is not consulted): `GHIDRA_INSTALL_DIR`, `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`, `HOPPER_LAUNCHER_PATH`, `PATH` with nvm-24.22.1 first, and `REA_HOPPER_STARTUP_TIMEOUT_MS: "600000"` (default 120,000 ms is under Apollo's ~150 s cold analysis). `~/.claude/settings.json` env has `MCP_TOOL_TIMEOUT: "660000"` so one tool call survives that startup. **Claude Desktop's config deliberately has no `rea` entry** — see the Automation trap below.
+
+Verify with (all vars on the *same line* as the command; a standalone `VAR=…` line never reaches `npx`):
+
+```bash
+PATH="$HOME/.nvm/versions/node/v24.22.1/bin:$PATH" GHIDRA_INSTALL_DIR="$HOME/Applications/ghidra_12.1.4_PUBLIC" JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" npx rea-agents@latest doctor --provider ghidra --provider hopper
+```
+
+Expect `healthy: true` for node/ghidra/hopper; `missing`/`config_drift` lines for unselected clients and optional engines (IDA, JADX, Kuna) are noise.
+
+**Setup gotchas — each cost a debugging cycle:**
+
+- **macOS Automation/TCC only permits the Code-launched REA server to drive Hopper.** The REA server Claude Desktop spawns runs as its own `node` process (via the `disclaimer` helper); macOS shows no Automation prompt for that kind of process, so every Hopper call fails with "Not authorized to send Apple events to Hopper Disassembler." The Code engine's server (lowercase `claude.app` in System Settings → Privacy & Security → Automation, with the Hopper toggle on) inherits the grant. A Hopper entry only appears under an app after macOS prompts at least once.
+- **Ghidra's release zip has no macOS-ARM native decompiler** (only `linux_x86_64`/`win_x86_64` in `Ghidra/Features/Decompiler/os/`). Build it once, **on JDK 21** — Gradle 9.7.1's Groovy dies on Java 27 ("class file major version 71"):
+  ```bash
+  cd ~/Applications/ghidra_12.1.4_PUBLIC/support/gradle && JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ./gradlew buildNatives
+  ```
+  Binaries land in each module's `build/os/mac_arm_64/` (not `os/mac_arm_64/`) — REA accepts that path. sha256 of `ghidra_12.1.4_PUBLIC_20260921.zip`: `ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db`.
+- **Cold Ghidra imports must run through the REA CLI, not MCP tools.** Apollo's 14.5 MB binary imports + analyses in 16–18 min; when an MCP call exceeds the client's per-call timeout the app *restarts the REA server and the import is lost*. The CLI has no deadline and writes a snapshot that `open_binary` loads into the MCP tools in seconds.
+- **Hopper demo economics:** ~150 s first analysis per session, then ~2 s per call; the 30-min cap just means the next question after expiry pays the 150 s again.
+
+**Choosing an engine (measured against Apollo, 2026-10-27):**
+
+| | Hopper demo | Ghidra 12.1.4 |
+|---|---|---|
+| Time to first answer | ~150 s | 941–1,113 s (re-imports every run unless kept in a project) |
+| ARC calls in pseudocode | ✅ complete; names ivars via `objc_ivar_offset_*` symbols | ❌ **omits `objc_release` calls** — its ObjC support swaps them for `_objc_release_fixup` injections |
+| Naming | weaker on Swift | names weak fields, demangles `class::method` |
+| Bulk/export jobs | impossible (demo) | the only option |
+
+Hopper is the default for this repo's frequent `.cxx_destruct`/ivar-layout questions. **Never decide `objc_release` vs `swift_bridgeObjectRelease` from Ghidra pseudocode alone** — that is exactly the question `docs/swift-array-ivar-crash-RE.md` turns on, and Ghidra would make four real `objc_release` fields look unreleased. Cross-check with REA's `procedure_assembly` or with Hopper.
+
+**Validated against known ground truth:** REA+Hopper decompiled `-[RedditListViewController .cxx_destruct]` (`0x10064c234`) and matched every field in `Headers/Swift/RedditListViewController.swift` and the crash doc (arrays on `swift_bridgeObjectRelease`, 4× `objc_release` bar-button fields Ghidra dropped). New detail it surfaced: for `subredditToLoad: String?`, only the second word (`+0x8`) gets the bridge release. Also confirmed `-[_TtC6Apollo21ProfileViewController viewDidLoad]` at `0x1007b0d10`.
+
+**Whole-binary analysis artifacts.** The REA CLI's `decompile-all` route was already run over apollo-base 1.15.11; the results live under `~/Projects/Apollo-Source-Private/` (outside this repo):
+- `decompiled/Apollo/functions/<address>.c` — 53,316 functions, one file each, with `decompile-index.json` and a resumable `decompile-journal.jsonl`.
+- `decompiled/Apollo-named/` — all 40,975 non-thunk functions re-exported **with 7,806 recovered names applied**, so headers and call sites read e.g. `ServerBuddy.onlyValidateReceipt(lookingFor:allowRetrying:)` instead of `FUN_…`. 163 s for the whole re-export, thanks to the saved project + multi-core decompile.
+- `decompiled/ext-*/` — all six appexes (18,843 functions).
+- `naming/` — `name-map.json`, `swift-names.json` (4,576 names from Swift class method tables + protocol conformances, via `tools/swift_names.py`), and `source-files.json` mapping Apollo's 97 original Swift files to 596 functions / 90 types.
+- `ghidra-project/` — persistent Ghidra project for the main binary; opening it skips the ~17-minute cold analysis. Reusable scripts in `tools/` (`swift_names.py`, `build_name_map.py`, `ghidra_scripts/ExportFacts.java`).
+- Remaining unnamed: ~21,700 functions; anything answering from them still goes through REA live.
 
 ### Effective Hopper Investigation Patterns
 
@@ -335,6 +450,55 @@ Swift value types (structs like `Foundation.URL`) stored as ivars in a class are
 2. If not, look for ObjC display nodes or other ObjC objects that hold the same data (e.g. `urlTextNode.attributedText.string` for a URL shown in a button)
 3. As a last resort, study the struct layout via `.cxx_destruct` and the type metadata accessor
 
+### Swift Array/Dictionary/String Ivars Are BridgeObjects — Never Use ObjC Ownership Primitives On Them
+
+Full worked case study: `docs/swift-array-ivar-crash-RE.md` (the Hide Sections → Multireddits launch crash). The distilled rules:
+
+- A Swift `[Element]?` ivar (e.g. `RedditListViewController.multireddits: [RDKMultireddit]?`) stores a single word, but that word is a `Builtin.BridgeObject`: the storage heap pointer with Swift discriminator flag bits OR'd in (observed live: `0x4000000103f7cad0` — bit 62, Swift's arm64 native-storage flag, on top of pointer `0x103f7cad0`). It is NOT a valid ObjC `id`, even though the array's *elements* are ObjC objects.
+- `object_getIvar`/`object_setIvar`/`objc_storeStrong`/assigning to an `id` local all hand that word to ARC. objc's arm64 tagged-pointer check looks at bit 63 only, so a bit-62-flagged word is retained/autoreleased as if it were a real object — and the poisoned autorelease pool pops **later**, crashing far from the tweak: `EXC_BAD_ACCESS` in `AutoreleasePoolPage::releaseUntil → objc_release` (at launch, typically at the end of the `FBSWorkspaceScenesClient … sendDidCreateForScene` callout), tweak absent from every thread, while logging at the swap site looks perfectly clean. Recognize that stack shape as "some code handed a non-pointer to ARC earlier in this callout".
+- `objc_storeStrong` is only "the ARC-correct primitive" for genuine ObjC references. If an ivar swap crashes and the ivar's declared type (check `Headers/Swift/*.swift`) is a Swift value type, retrying with a different ObjC ownership call is the same mistake restated.
+- If such a word must be temporarily swapped (see `src/ApolloHideSubredditSections.xm`), copy it out and back as a raw `uintptr_t` via `ivar_getOffset` + `memcpy` with **zero** refcounting operations: net refcount effect is zero across a synchronous same-thread bracket, and `0` is a valid `nil` for an `Optional<Array>`.
+- Exhaust hookable interception points first, in order: ObjC getter on a model object (RDKUser/RDKClient — check the class-dump headers; `RDKUser` has `multireddits`/`subscribedSubreddits`/etc. right next to the already-hooked `moderatedSubreddits`) → NSUserDefaults keys → table-delegate return values → raw ivar word as the last resort. A passive log probe (`%orig` + log, no behavior change) answers in minutes whether Apollo's code path actually reads a candidate getter.
+- To confirm what release primitive an ivar slot really uses, decompile `-[Class .cxx_destruct]` in Hopper: `objc_release` on the slot ⇒ ObjC reference; `swift_bridgeObjectRelease` ⇒ BridgeObject, memcpy-only.
+
+### Debugging Delayed / Use-After-Corruption Crashes (the workflow that cracked the case above)
+
+1. **Read the `.ips` before theorizing** — the crashed-thread shape often names the *mechanism* (autorelease pool, dispatch, notification) even when the tweak is on no stack.
+2. **Match crash UUIDs to builds**: `dwarfdump --uuid` on the `ApolloReborn.dylib` inside each candidate `.deb`/`.ipa` in `packages/`, compared against the `.ips` `usedImages` entry. This proves exactly which code variant crashes (and which doesn't) before touching anything.
+3. **Reproduce in the simulator with a settings backup** (`scripts/run-in-sim.sh --backup <zip>` — the toggle state rides in `preferences.plist`). A device-only "crash on relaunch" becomes a seconds-fast loop; sim crash logs land in `~/Library/Logs/DiagnosticReports/` and should match the device stack frame-for-frame before you trust the repro.
+4. **Instrument what enters the deferred mechanism, not the site state.** Clean at-site logging with a later crash means the damage lives in something deferred; for suspected bad pointers, log the raw word (`memcpy` into `uintptr_t`, print top byte / low 3 bits) *before* any ObjC/ARC code touches it.
+5. **Verify the fix against the same repro** (survives launch + feature visibly works + no new DiagnosticReports), not just "it builds".
+
+### Hooking a Lazily-Realized Swift Class: Bare Name vs Mangled Name
+
+`%hook ClassName` using Apollo's bare (unmangled) Swift class name can silently fail to install — no crash, no build error, the hook's methods just never fire — if that class hasn't been "realized" by the Swift runtime yet at the moment Logos installs hooks. Swift classes bridged to ObjC are lazily realized; `objc_getClass("ClassName")` (bare) can legitimately return `nil` at that early point even though the class unquestionably exists in the binary, especially under the simulator's `LOGOS_DEFAULT_GENERATOR=internal` build (plain ObjC-runtime swizzling, no CydiaSubstrate) which has no retry/deferral for this.
+
+**Symptom:** a hook (e.g. adding a nav bar button in `viewDidLoad`) compiles and links fine (confirm with `nm -a` on the dylib — the hook's generated trampoline symbol is present), but its effect never appears at runtime, and no log line from inside the hook ever fires.
+
+**How to confirm this is the cause:** add a temporary `%ctor` block that directly compares both resolutions and logs them:
+```objc
+%ctor {
+    Class bareClass = objc_getClass("ProfileViewController");
+    Class mangledClass = objc_getClass("_TtC6Apollo21ProfileViewController");
+    ApolloLog(@"[Debug] bare->%@ (name=%s) mangled->%@ (name=%s)",
+              bareClass, bareClass ? class_getName(bareClass) : "nil",
+              mangledClass, mangledClass ? class_getName(mangledClass) : "nil");
+}
+```
+If bare resolves to `nil` while the mangled form resolves fine, that's the bug.
+
+**Fix:** hook the mangled class name directly (e.g. `%hook _TtC6Apollo21ProfileViewController`, not `%hook ProfileViewController`) — this resolves via a compile-time-bound symbol reference, not a runtime string lookup, so it's immune to realization timing entirely. This is already the pattern most hooks on Swift classes in this codebase use (`ApolloNativeActionMenus.xm`, `ApolloAccountSwitcherViewController.xm`, `ApolloSignInSplash.xm`); a handful of older files (`ApolloRecentlyRead.xm`) use the bare name and currently get away with it, likely due to favorable constructor/link ordering on that specific build — not something to rely on for new code.
+
+### Reliably Getting a Profile Screen's Current Username
+
+Don't read `ProfileViewController`'s `userInfo` property via KVC (`[(id)vc valueForKey:@"userInfo"]` then `.username`) to find out whose profile is being shown — `userInfo` can be `nil` in some load states, notably for the **signed-in user's own profile**, since Apollo doesn't always need to fetch profile info the same way it does for other users. A check built on this will falsely treat your own profile as unidentifiable.
+
+Use the existing, already-proven helper instead: `ApolloUsernameFromProfileViewController(UIViewController *viewController)`, defined in `src/ApolloUserAvatars.xm` (exposed as a plain C function rather than `static`, so it can be called from other files). It tries several ivar names in order (`username`, `userName`, `_username`, `account`, `user`, `profile`, `viewModel`) via generic runtime ivar reading (not KVC), then falls back to parsing the nav bar title — with a blocklist of generic titles ("Accounts", "Settings", "Saved", "Hidden", etc.) so a screen showing a section name rather than a username isn't misidentified. This is the mechanism to reuse any time a hook needs to know which profile it's looking at.
+
+### Native "More Options" (3-Dot) Menu Doesn't Render on Your Own Profile
+
+`ApolloNativeActionMenus.xm`'s existing menu-capture/injection machinery (`_TtC6Apollo16ActionController`, `ApolloNativeActionMenuPresent`, etc.) is the right place to add an entry to Apollo's native 3-dot "more options" menu — but that menu simply doesn't exist/render at all on **your own profile** (there's nothing to report, block, or message on yourself), so any feature that must work on your own profile can't be reached through it. For a feature scoped to the signed-in user's own profile, add a dedicated `UIBarButtonItem` to `navigationItem.rightBarButtonItems` from a `viewDidLoad` hook instead (see `ApolloRecentlyRead.xm`'s clock-icon button, and `ApolloHiddenContentMenu.xm`'s eye-slash button) — this renders unconditionally regardless of whether a context menu exists for that particular profile. Reserve the 3-dot-menu injection point for features meant to apply to *other* users' profiles.
+
 ### Capturing Swift Singletons via fishhook
 
 Pure Swift classes (no ObjC-visible methods) that use `dispatch_once` singletons can't be accessed through normal hooking. Use `fishhook` to briefly hook `swift_allocObject`, match on the class's type metadata pointer (which equals the `objc_getClass` result for Swift classes), capture the instance, and immediately unhook:
@@ -387,6 +551,22 @@ Apollo uses two distinct video player paths depending on content type:
 
 **Best hook for comments header video:** `RichMediaHeaderCellNode.cellNodeVisibilityEvent:` — event-driven, comments-only (no context check needed). Player may not exist on event=0; use ~500ms retry.
 
+### Debugging "Signed Out After Closing/Backgrounding" on Real-Device Sideloads
+
+A user report of Apollo signing out of Reddit shortly after closing or backgrounding the app (apollo-reborn#567, fixed in PR #579) looked at first like a bundle-ID/entitlement mismatch from sideload signing (rebranding, Signulous, etc.) — it wasn't. Two techniques and the actual root cause, worth remembering before re-treading this ground:
+
+**Capturing live logs from a device with no Xcode pairing.** `xcrun devicectl device console --device <id>` requires Developer Mode + an Xcode-style device pairing ("The device must be paired before it can be connected") that most sideload-only devices don't have. `idevicesyslog` (libimobiledevice, `brew install libimobiledevice`) works over the older lockdown/syslog-relay protocol and only needs "Trust This Computer":
+```bash
+idevice_id -l                               # get the UDID
+idevicesyslog -u <udid> | grep -i ApolloFix # stream the tweak's os_log lines live
+```
+
+**Timing rules out network causes.** When a stateful bug's effect follows its trigger by only 1-2ms (measurable from consecutive log timestamps), that's too fast for any HTTPS round-trip — it proves the cause is purely local/synchronous, not a server-side rejection (e.g. Reddit revoking an overused shared client_id). This was the step that ruled out a Reddit-side cause here.
+
+**The actual root cause: a Valet keychain item vs. iCloud Keychain sync.** Apollo's Valet-backed account-secrets keychain item (service contains `com.christianselig.Apollo`, account `2RedditAccounts2`) can come back `errSecItemNotFound` on `SecItemCopyMatching` while the very next `SecItemAdd` for the identical item fails `errSecDuplicateItem` — the signature of an item that's iCloud-Keychain-synced: a plain read without `kSecAttrSynchronizable` only searches non-synced items, but a synced item still collides as a duplicate on add. Apollo's `AccountManager` doesn't retry with an update on that failure, it just wipes the signed-in account. Fixed in `src/Tweak.xm`'s `SecItemCopyMatching_replacement`/`SecItemAdd_replacement` by broadening reads to `kSecAttrSynchronizableAny` and self-healing a stuck duplicate-add by deleting the stale item and retrying (`ApolloQueryByBroadeningSynchronizable`/`ApolloDeleteStaleKeychainItem`). Confirmed via independent reproduction on a second, unrelated user's device with the same setup (Signulous signing + the shared "dystopia" API key) — not a one-off.
+
+**Not the cause (ruled out, don't re-investigate first):** rebranding the bundle ID, the specific enterprise/mass-signing method (Signulous vs. AltStore/SideStore), and this codebase's long-standing `stripGroupAccessAttr` unconditional access-group stripping — none of these reproduced or fixed the symptom when isolated and tested. `stripGroupAccessAttr` was still hardened to try the real access group first and only fall back to stripping on `errSecMissingEntitlement`, which is a legitimate improvement, but it was not what caused this bug.
+
 ## Headers And Runtime Introspection Tips
 
 - For methods you only need to call defensively, prefer `objc_getClass` + `@selector(...)` + `objc_msgSend` over adding brittle headers. Write constant selectors as `@selector(name:)`; reserve `NSSelectorFromString` for names built at runtime. For a zero-argument object getter, `ApolloSendObject(object, @selector(name))` (ApolloCommon.h) does the respondsToSelector/objc_msgSend pair.
@@ -397,3 +577,4 @@ Apollo uses two distinct video player paths depending on content type:
   - **C:** a direct `objc_getClass` call, only in cold or one-shot code (`%ctor`, setup, a user tap, error paths, or inside another one-time initializer) or for names built at runtime. Never call it per frame, per cell, per layout pass or in a loop.
 - Apollo and Texture classes live in Apollo's binary, which the dylib is injected into rather than linked against, so `[ApolloClass class]` fails at link time; use `objc_getClass`. Public SDK classes from linked frameworks (UIKit, Photos, PhotosUI, SafariServices, ...) can be referenced directly as `[UIKitClass class]`.
 - If a class is only forward-declared, cast `self` to `UIViewController *` (or `id`) before sending UIKit messages to keep clang happy.
+- If using XcodeBuildMCP, use the installed XcodeBuildMCP skill before calling XcodeBuildMCP tools.
