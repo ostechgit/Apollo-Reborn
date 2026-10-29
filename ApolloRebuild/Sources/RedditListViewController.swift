@@ -162,7 +162,9 @@ final class RedditListViewController: UIViewController, UITableViewDataSource, U
     }
 
     private func reloadAll() {
-        loadFavorites()
+        _ = loadFavorites()
+        // Invalidate any fetch still in flight from an earlier reload
+        loadGeneration += 1
 
         guard AccountManager.shared.isLogged else {
             // Same as the original: the shortcuts stay, the account sections are empty
@@ -180,42 +182,90 @@ final class RedditListViewController: UIViewController, UITableViewDataSource, U
         loadMultireddits()
     }
 
-    private func loadSubscribedSubreddits() {
-        _ = RDKClient.shared().subscribedSubreddits(pagination: nil) { [weak self] subreddits, _, error in
-            guard let self = self else { return }
-            if let subreddits = subreddits as? [RDKSubreddit] {
-                self.subscribedSubreddits = subreddits
-                os_log("Subscribed subreddits: %d", log: apolloLog, subreddits.count)
-            } else if let error = error {
-                os_log("Subscribed subreddits failed: %s", log: apolloLog, error.localizedDescription)
+    // Apollo asks for 100 per page and keeps following data.after until Reddit
+    // stops returning one, so an account with hundreds of subscriptions ends up
+    // with all of them. A page size of nil would leave Reddit's default of 25,
+    // which is why only the first 25 subscriptions used to show up.
+    private static let listPageSize = 100
+    // Safety stop in case a response ever repeats a cursor (100 per page here is
+    // 10,000 entries, well past any real account's subscription count).
+    private static let maxListPages = 100
+
+    // Every reload bumps the generation, so a page that lands after a newer
+    // reload (a pull-to-refresh mid-fetch, say) is dropped instead of mixing
+    // two accounts' lists together.
+    private var loadGeneration = 0
+
+    // Walks one listing endpoint's pages and hands back everything it returned.
+    private typealias ListingHandler = ([Any]?, RDKPagination?, Error?) -> Void
+
+    private func loadAllPages<T>(_ fetch: @escaping (RDKPagination?, @escaping ListingHandler) -> Void,
+                                 as type: T.Type,
+                                 completion: @escaping ([T]) -> Void) {
+        var collected: [T] = []
+        var pages = 0
+        let generation = self.loadGeneration
+
+        func load(_ pagination: RDKPagination?) {
+            pages += 1
+            _ = fetch(pagination) { objects, next, error in
+                guard generation == self.loadGeneration else { return }
+                if let error = error {
+                    os_log("List page %d failed: %s", log: apolloLog, pages, error.localizedDescription)
+                    completion(collected)
+                    return
+                }
+                if let objects = objects as? [T] {
+                    collected.append(contentsOf: objects)
+                }
+                // Reddit returns an after cursor on every page but the last
+                guard pages < Self.maxListPages, let next = next, next.after != nil else {
+                    completion(collected)
+                    return
+                }
+                load(next)
             }
+        }
+
+        load(RDKPagination(limit: UInt(Self.listPageSize)))
+    }
+
+    private func loadSubscribedSubreddits() {
+        let generation = self.loadGeneration
+        self.loadAllPages({ pagination, handler in
+            RDKClient.shared().subscribedSubreddits(pagination: pagination, completion: handler)
+        }, as: RDKSubreddit.self) { [weak self] subreddits in
+            guard let self = self else { return }
+            // Both list fetches finish independently; only the active generation
+            // may publish into the UI
+            guard generation == self.loadGeneration else { return }
+            self.subscribedSubreddits = subreddits
+            os_log("Subscribed subreddits: %d", log: apolloLog, subreddits.count)
             self.sectionSubreddits()
             self.finishLoading()
         }
     }
 
     private func loadModeratedSubreddits() {
-        _ = RDKClient.shared().moderatedSubreddits(pagination: nil) { [weak self] subreddits, _, error in
-            guard let self = self else { return }
-            if let subreddits = subreddits as? [RDKSubreddit] {
-                self.moderatedSubreddits = subreddits
-                os_log("Moderated subreddits: %d", log: apolloLog, subreddits.count)
-            } else if let error = error {
-                os_log("Moderated subreddits failed: %s", log: apolloLog, error.localizedDescription)
-            }
+        let generation = self.loadGeneration
+        self.loadAllPages({ pagination, handler in
+            RDKClient.shared().moderatedSubreddits(pagination: pagination, completion: handler)
+        }, as: RDKSubreddit.self) { [weak self] subreddits in
+            guard let self = self, generation == self.loadGeneration else { return }
+            self.moderatedSubreddits = subreddits
+            os_log("Moderated subreddits: %d", log: apolloLog, subreddits.count)
             self.finishLoading()
         }
     }
 
     private func loadMultireddits() {
-        _ = RDKClient.shared().multireddits(pagination: nil) { [weak self] multireddits, _, error in
-            guard let self = self else { return }
-            if let multireddits = multireddits as? [RDKMultireddit] {
-                self.multireddits = multireddits
-                os_log("Multireddits: %d", log: apolloLog, multireddits.count)
-            } else if let error = error {
-                os_log("Multireddits failed: %s", log: apolloLog, error.localizedDescription)
-            }
+        let generation = self.loadGeneration
+        self.loadAllPages({ pagination, handler in
+            RDKClient.shared().multireddits(pagination: pagination, completion: handler)
+        }, as: RDKMultireddit.self) { [weak self] multireddits in
+            guard let self = self, generation == self.loadGeneration else { return }
+            self.multireddits = multireddits
+            os_log("Multireddits: %d", log: apolloLog, multireddits.count)
             self.finishLoading()
         }
     }

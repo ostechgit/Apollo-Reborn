@@ -541,7 +541,9 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
 // MARK: - User content
 
 - (NSURLSessionDataTask *)subscribedSubredditsWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
-    return [self listingTaskWithPath:@"subreddits/mine/subscriber" parameters:nil pagination:pagination completion:completion];
+    // The original formats this as "subreddits/mine/%@.json" with its
+    // "subscriber" category
+    return [self listingTaskWithPath:@"subreddits/mine/subscriber.json" parameters:nil pagination:pagination completion:completion];
 }
 
 - (NSURLSessionDataTask *)moderatedSubredditsWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
