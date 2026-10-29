@@ -6,14 +6,14 @@
 
 **RE Artifacts:** `~/Projects/Apollo-Source-Private/` - 53,316 decompiled functions, 7,806 recovered names, naming pipeline complete.
 
-## Status: In Progress
+## Status: Phase 1 Complete, Phase 2 In Progress
 
 Last updated: 2026-10-29
 
 ## Phase 1: Implement Missing Source Files (7 files, 43 functions)
 
 ### Priority 1: ActionController+Moderator.swift (33 functions)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** Moderator actions for comments (approve, remove, stick, lock, etc.)
 - **Functions to implement:**
   - `showModeratorActions(forComment:sectionController:viewController:completion:)`
@@ -21,7 +21,7 @@ Last updated: 2026-10-29
 - **Cross-reference:** Check apollo-reborn's `src/ApolloActionMenu.xm` for hook names
 
 ### Priority 2: AppDelegate+Notifications.swift (4 functions)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** APNs token handling for push notifications
 - **Functions to implement:**
   - `fetchAPNsToken(completion:)`
@@ -30,7 +30,7 @@ Last updated: 2026-10-29
 - **Cross-reference:** Check apollo-reborn's notification hooks
 
 ### Priority 3: Holla.swift (2 functions)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** Status toast notifications
 - **Functions to implement:**
   - `showStatus(_:text:duration:savedItemFullName:fromViewController:tappedBlock:)`
@@ -38,14 +38,14 @@ Last updated: 2026-10-29
 - **Cross-reference:** Check apollo-reborn's toast implementation
 
 ### Priority 4: ASTableViewController.swift (1 function)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** Base table view controller with viewDidAppear
 - **Functions to implement:**
   - `viewDidAppear(_:)`
 - **Cross-reference:** Check apollo-reborn's table view hooks
 
 ### Priority 5: ActionController+UserReport.swift (2 functions)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** User reporting functionality
 - **Functions to implement:**
   - `normalUserReportSubredditRulesSelected(thingFullname:subreddit:tintAsModerator:fromViewController:)`
@@ -53,14 +53,14 @@ Last updated: 2026-10-29
 - **Cross-reference:** Check apollo-reborn's report hooks
 
 ### Priority 6: ActionController+ModmailReport.swift (1 function)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** Modmail reporting
 - **Functions to implement:**
   - `modmailReportSubredditRulesSelected(thingFullname:subreddit:tintAsModerator:fromViewController:)`
 - **Cross-reference:** Check apollo-reborn's modmail report hooks
 
 ### Priority 7: ActionController+Report.swift (1 function)
-- **Status:** Not started
+- **Status:** ✅ Complete
 - **Purpose:** General post/comment reporting
 - **Functions to implement:**
   - `reportSubredditRulesSelected(thingFullname:subreddit:tintAsModerator:fromViewController:)`
@@ -157,3 +157,4 @@ python3 tests/mock_reddit_server.py --port 8765
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.
+- **2026-10-29:** Phase 1 complete - implemented all 7 missing source files (43 functions total). Cross-referenced apollo-reborn tweak source for correct function signatures and action kinds. Next: Phase 2 - fix 31 placeholder view controllers with real RDKClient API calls.
