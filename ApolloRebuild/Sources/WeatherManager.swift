@@ -12,11 +12,35 @@ class WeatherManager {
     private init() {}
     
     func fetchWeather(forLocation location: String, completion: @escaping (String?) -> Void) {
-        // In the original app, this would fetch weather from a weather API
-        // For now, return placeholder data
-        DispatchQueue.main.async {
-            completion("Sunny, 72°F")
-        }
+        // Fetch weather from OpenWeatherMap
+        let apiKey = "your_openweathermap_api_key"
+        let encodedLocation = location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? location
+        let url = URL(string: "https://api.openweathermap.org/data/2.5/weather?q=\(encodedLocation)&appid=\(apiKey)&units=imperial")!
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let data = data {
+                do {
+                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    if let main = json?["main"] as? [String: Any],
+                       let temp = main["temp"] as? Double,
+                       let weather = json?["weather"] as? [[String: Any]],
+                       let description = weather.first?["description"] as? String {
+                        let weatherString = "\(description.capitalized), \(Int(temp))°F"
+                        DispatchQueue.main.async {
+                            self.currentWeather = weatherString
+                            completion(weatherString)
+                        }
+                        return
+                    }
+                } catch {
+                    print("Weather fetch failed: \(error)")
+                }
+            }
+            
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+        }.resume()
     }
     
     var weather: String? {

@@ -10,6 +10,7 @@ class AppStoreBuddy {
     
     private var products: [SKProduct] = []
     private var purchasedProductIDs: Set<String> = []
+    private var productsCompletion: (([SKProduct]) -> Void)?
     
     private init() {
         // Load purchased product IDs
@@ -20,11 +21,14 @@ class AppStoreBuddy {
     }
     
     func loadProducts(productIDs: [String], completion: @escaping ([SKProduct]) -> Void) {
-        // In the original app, this would load products from the App Store
-        // For now, return empty array
-        DispatchQueue.main.async {
-            completion([])
-        }
+        // Load products from the App Store
+        let productIdentifiers = Set(productIDs)
+        let request = SKProductsRequest(productIdentifiers: productIdentifiers)
+        request.delegate = self
+        request.start()
+        
+        // Store completion for later
+        self.productsCompletion = completion
     }
     
     func purchaseProduct(_ product: SKProduct, completion: @escaping (Bool) -> Void) {
@@ -44,5 +48,19 @@ class AppStoreBuddy {
     private func savePurchasedProducts() {
         let defaults = UserDefaults.standard
         defaults.set(Array(self.purchasedProductIDs), forKey: "purchasedProductIDs")
+    }
+}
+
+extension AppStoreBuddy: SKProductsRequestDelegate {
+    func productsRequest(_ request: SKProductsRequest, didReceive response: SKProductsResponse) {
+        self.products = response.products
+        self.productsCompletion?(response.products)
+        self.productsCompletion = nil
+    }
+    
+    func request(_ request: SKRequest, didFail error: Error) {
+        print("App Store request failed: \(error)")
+        self.productsCompletion?([])
+        self.productsCompletion = nil
     }
 }

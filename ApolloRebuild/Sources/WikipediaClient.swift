@@ -12,10 +12,28 @@ class WikipediaClient {
     private init() {}
     
     func fetchSummary(forTitle title: String, completion: @escaping (String?) -> Void) {
-        // In the original app, this would fetch a Wikipedia summary
-        // For now, return placeholder data
-        DispatchQueue.main.async {
-            completion("This is a placeholder Wikipedia summary for \(title).")
-        }
+        // Fetch Wikipedia summary
+        let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? title
+        let url = URL(string: "\(self.baseURL)\(encodedTitle)")!
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let data = data {
+                do {
+                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    if let extract = json?["extract"] as? String {
+                        DispatchQueue.main.async {
+                            completion(extract)
+                        }
+                        return
+                    }
+                } catch {
+                    print("Wikipedia fetch failed: \(error)")
+                }
+            }
+            
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+        }.resume()
     }
 }

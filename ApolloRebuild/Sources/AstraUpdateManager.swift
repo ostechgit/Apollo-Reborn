@@ -10,10 +10,27 @@ class AstraUpdateManager {
     private init() {}
     
     func checkForUpdates(completion: @escaping (Bool) -> Void) {
-        // In the original app, this would check for updates on the App Store
-        // For now, return false
-        DispatchQueue.main.async {
-            completion(false)
-        }
+        // Check for updates by comparing current version with App Store version
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        
+        // For sideloaded builds, we can't check the App Store directly
+        // Instead, we'll check a remote version file
+        let url = URL(string: "https://raw.githubusercontent.com/Apollo-Reborn/Apollo-Reborn/main/version.txt")!
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let data = data {
+                let remoteVersion = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if remoteVersion != currentVersion {
+                    DispatchQueue.main.async {
+                        completion(true)
+                    }
+                    return
+                }
+            }
+            
+            DispatchQueue.main.async {
+                completion(false)
+            }
+        }.resume()
     }
 }

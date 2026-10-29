@@ -12,8 +12,21 @@ class ReceiptDataBuddy {
     private init() {}
     
     func fetchReceiptData(completion: @escaping (Data?) -> Void) {
-        // In the original app, this would fetch receipt data from the app store
-        // For now, return nil
+        // Fetch receipt data from the app bundle
+        let receiptURL = Bundle.main.appStoreReceiptURL
+        if let receiptURL = receiptURL, FileManager.default.fileExists(atPath: receiptURL.path) {
+            do {
+                let data = try Data(contentsOf: receiptURL)
+                self.receiptData = data
+                DispatchQueue.main.async {
+                    completion(data)
+                }
+                return
+            } catch {
+                print("Failed to read receipt: \(error)")
+            }
+        }
+        
         DispatchQueue.main.async {
             completion(nil)
         }
