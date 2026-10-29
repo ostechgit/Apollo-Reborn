@@ -1,0 +1,112 @@
+import UIKit
+import AsyncDisplayKit
+
+// RedditListViewController - displays a list of subreddits or multireddits
+// Reconstructed from apollo-base 1.15.11 binary analysis.
+
+class RedditListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+    
+    private var tableView: ASTableView?
+    private var subreddits: [RDKSubreddit] = []
+    private var isLoading = false
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        self.title = "Subreddits"
+        self.view.backgroundColor = UIColor.systemBackground
+        
+        let tableView = ASTableView(frame: .zero)
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 60
+        self.view.addSubview(tableView)
+        
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            tableView.topAnchor.constraint(equalTo: self.view.topAnchor),
+            tableView.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
+        ])
+        
+        self.tableView = tableView
+        
+        // Load subreddits
+        loadSubreddits()
+    }
+    
+    private func loadSubreddits() {
+        // In the original app, this would fetch subreddits from Reddit
+        // For now, we'll use placeholder data
+        self.isLoading = true
+        
+        // Simulate loading
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.isLoading = false
+            self?.tableView?.reloadData()
+        }
+    }
+    
+    // MARK: - ASDataSource
+    
+    func numberOfSections(in tableView: UITableView) -> Int {
+        return 1
+    }
+    
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return self.subreddits.count
+    }
+    
+    func tableView(_ tableView: ASTableView, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
+        return {
+            let subreddit = self.subreddits[indexPath.row]
+            let node = SubredditCellNode(subreddit: subreddit)
+            return node
+        }
+    }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: "Cell")
+        return cell
+    }
+}
+
+// SubredditCellNode - displays a single subreddit
+class SubredditCellNode: ASCellNode {
+    
+    private let subreddit: RDKSubreddit
+    
+    init(subreddit: RDKSubreddit) {
+        self.subreddit = subreddit
+        super.init()
+        
+        self.backgroundColor = UIColor.clear
+        
+        let label = ASTextNode()
+        label.attributedText = NSAttributedString(
+            string: "r/" + (self.subreddit.display_name ?? ""),
+            attributes: [
+                .font: UIFont.systemFont(ofSize: 14),
+                .foregroundColor: UIColor.label
+            ]
+        )
+        
+        self.addSubnode(label)
+        
+        label.frame = CGRect(x: 16, y: 16, width: self.frame.width - 32, height: 20)
+    }
+    
+    override func layout() {
+        super.layout()
+        if let nodes = self.subnodes {
+            for subnode in nodes {
+                subnode.frame = CGRect(x: 16, y: 16, width: self.frame.width - 32, height: 20)
+            }
+        }
+    }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: "Cell")
+        return cell
+    }
+}

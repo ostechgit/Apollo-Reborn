@@ -1,0 +1,81 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "after": null, "before": null, "dist": 1,
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "id": "1fx0002", "name": "t3_1fx0002",
+            "title": "Sunrise over the Blue Mountains this morning [OC] [4032x3024]",
+            "author": "photo_person", "subreddit": "EarthPorn", "is_self": false,
+            "url": "https://i.redd.it/abcdefgh1234.jpeg",
+            "permalink": "/r/EarthPorn/comments/1fx0002/sunrise_over_the_blue_mountains/",
+            "thumbnail": "default", "created_utc": 1761590000, "edited": false,
+            "score": 18342, "ups": 18342, "downs": 0, "likes": true, "num_comments": 311,
+            "over_18": false, "spoiler": false, "media": null
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "after": null, "before": null,
+      "children": [
+        {
+          "kind": "t1",
+          "data": {
+            "id": "c001", "name": "t1_c001", "author": "first_commenter",
+            "body": "Incredible colours. What lens did you use?", "body_html": "&lt;div class=\"md\"&gt;&lt;p&gt;Incredible colours.&lt;/p&gt;&lt;/div&gt;",
+            "link_id": "t3_1fx0002", "parent_id": "t3_1fx0002", "subreddit": "EarthPorn",
+            "created_utc": 1761591000, "edited": false, "score": 512, "ups": 512, "downs": 0,
+            "likes": null, "score_hidden": false, "is_submitter": false, "stickied": false,
+            "collapsed": false, "saved": false, "locked": false, "archived": false,
+            "gilded": 0, "controversiality": 0, "depth": 0, "distinguished": null,
+            "author_flair_text": null,
+            "replies": {
+              "kind": "Listing",
+              "data": {
+                "after": null, "before": null,
+                "children": [
+                  {
+                    "kind": "t1",
+                    "data": {
+                      "id": "c002", "name": "t1_c002", "author": "photo_person",
+                      "body": "A 24-70 at 35mm, f/8.", "link_id": "t3_1fx0002", "parent_id": "t1_c001",
+                      "created_utc": 1761592000, "edited": 1761593000, "score": 230, "ups": 230,
+                      "downs": 0, "likes": true, "score_hidden": false, "is_submitter": true,
+                      "depth": 1, "replies": "",
+                      "controversiality": 0, "gilded": 0
+                    }
+                  },
+                  {
+                    "kind": "more",
+                    "data": {"count": 14, "name": "t1_c003", "id": "c003", "parent_id": "t1_c001", "depth": 1, "children": ["c003", "c004", "c005"]}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "kind": "t1",
+          "data": {
+            "id": "c010", "name": "t1_c010", "author": "[deleted]", "body": "[deleted]",
+            "link_id": "t3_1fx0002", "parent_id": "t3_1fx0002", "created_utc": 1761591500,
+            "edited": false, "score": 1, "ups": 1, "downs": 0, "likes": null,
+            "score_hidden": true, "depth": 0, "replies": "", "controversiality": 1,
+            "collapsed": true, "collapsed_reason_code": "DELETED", "gilded": null
+          }
+        },
+        {
+          "kind": "more",
+          "data": {"count": 0, "name": "t1__", "id": "_", "parent_id": "t3_1fx0002", "depth": 0, "children": []}
+        }
+      ]
+    }
+  }
+]

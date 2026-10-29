@@ -1,0 +1,129 @@
+PODS:
+  - AFNetworking (4.0.1):
+    - AFNetworking/NSURLSession (= 4.0.1)
+    - AFNetworking/Reachability (= 4.0.1)
+    - AFNetworking/Security (= 4.0.1)
+    - AFNetworking/Serialization (= 4.0.1)
+    - AFNetworking/UIKit (= 4.0.1)
+  - AFNetworking/NSURLSession (4.0.1):
+    - AFNetworking/Reachability
+    - AFNetworking/Security
+    - AFNetworking/Serialization
+  - AFNetworking/Reachability (4.0.1)
+  - AFNetworking/Security (4.0.1)
+  - AFNetworking/Serialization (4.0.1)
+  - AFNetworking/UIKit (4.0.1):
+    - AFNetworking/NSURLSession
+  - Charts (4.1.0):
+    - Charts/Core (= 4.1.0)
+  - Charts/Core (4.1.0):
+    - SwiftAlgorithms (~> 1.0)
+  - CocoaLumberjack/Core (3.10.0)
+  - CocoaLumberjack/Swift (3.10.0):
+    - CocoaLumberjack/Core
+  - Eureka (5.5.0)
+  - FLAnimatedImage (1.0.17)
+  - IGListDiffKit (4.0.0)
+  - IGListKit (4.0.0):
+    - IGListDiffKit (= 4.0.0)
+  - Lockbox (3.0.7)
+  - Mantle (2.2.0):
+    - Mantle/extobjc (= 2.2.0)
+  - Mantle/extobjc (2.2.0)
+  - PINCache (3.0.4):
+    - PINCache/Arc-exception-safe (= 3.0.4)
+    - PINCache/Core (= 3.0.4)
+  - PINCache/Arc-exception-safe (3.0.4):
+    - PINCache/Core
+  - PINCache/Core (3.0.4):
+    - PINOperation (~> 1.2.3)
+  - PINOperation (1.2.3)
+  - PINRemoteImage/Core (3.0.4):
+    - PINOperation
+  - PINRemoteImage/iOS (3.0.4):
+    - PINRemoteImage/Core
+  - PINRemoteImage/PINCache (3.0.4):
+    - PINCache (~> 3.0.4)
+    - PINRemoteImage/Core
+  - SwiftAlgorithms (1.0.0)
+  - Texture (3.2.0):
+    - Texture/AssetsLibrary (= 3.2.0)
+    - Texture/Core (= 3.2.0)
+    - Texture/MapKit (= 3.2.0)
+    - Texture/Photos (= 3.2.0)
+    - Texture/PINRemoteImage (= 3.2.0)
+    - Texture/Video (= 3.2.0)
+  - Texture/AssetsLibrary (3.2.0):
+    - Texture/Core
+  - Texture/Core (3.2.0)
+  - Texture/IGListKit (3.2.0):
+    - IGListDiffKit (~> 4.0)
+    - IGListKit (~> 4.0)
+    - Texture/Core
+  - Texture/MapKit (3.2.0):
+    - Texture/Core
+  - Texture/Photos (3.2.0):
+    - Texture/Core
+  - Texture/PINRemoteImage (3.2.0):
+    - PINRemoteImage/iOS (~> 3.0.0)
+    - PINRemoteImage/PINCache
+    - Texture/Core
+  - Texture/Video (3.2.0):
+    - Texture/Core
+  - Unbox (4.0.0)
+  - Valet (4.3.0)
+
+DEPENDENCIES:
+  - AFNetworking (~> 4.0)
+  - Charts (~> 4.1)
+  - CocoaLumberjack/Swift (~> 3.8)
+  - Eureka (~> 5.4)
+  - FLAnimatedImage (~> 1.0)
+  - IGListKit (~> 4.0)
+  - Lockbox (~> 3.0)
+  - Mantle (~> 2.2)
+  - Texture (~> 3.1)
+  - Texture/IGListKit (~> 3.1)
+  - Unbox (~> 4.0)
+  - Valet (~> 4.1)
+
+SPEC REPOS:
+  trunk:
+    - AFNetworking
+    - Charts
+    - CocoaLumberjack
+    - Eureka
+    - FLAnimatedImage
+    - IGListDiffKit
+    - IGListKit
+    - Lockbox
+    - Mantle
+    - PINCache
+    - PINOperation
+    - PINRemoteImage
+    - SwiftAlgorithms
+    - Texture
+    - Unbox
+    - Valet
+
+SPEC CHECKSUMS:
+  AFNetworking: 3bd23d814e976cd148d7d44c3ab78017b744cd58
+  Charts: ce0768268078eee0336f122c3c4ca248e4e204c5
+  CocoaLumberjack: 12545b2899dcaeec69b82c27b174042259c1ec27
+  Eureka: 1c18c7fcd8f772cc2ca42d6be36292dffa77eecb
+  FLAnimatedImage: bbf914596368867157cc71b38a8ec834b3eeb32b
+  IGListDiffKit: 665d6cf43ce726e676013db9c7d6c4294259b6b2
+  IGListKit: fd5a5d21935298f5849fa49d426843cff97b77c7
+  Lockbox: 6d5ece4bc92407a8fd7a5acf1f22a6757240ded6
+  Mantle: c5aa8794a29a022dfbbfc9799af95f477a69b62d
+  PINCache: d9a87a0ff397acffe9e2f0db972ac14680441158
+  PINOperation: fb563bcc9c32c26d6c78aaff967d405aa2ee74a7
+  PINRemoteImage: 6256a644f4996991f124811763c7286b2a63ff94
+  SwiftAlgorithms: 38dda4731d19027fdeee1125f973111bf3386b53
+  Texture: 61e86ea2ee124f545be40293b54b5b8986006da2
+  Unbox: d2677af8fde59a30141e02981b11cb6a0e3b6bc5
+  Valet: 0eddc2f5876e7907a54b7763823eadb3fb3900cb
+
+PODFILE CHECKSUM: 2ebeb24a0fe60e5da377b393b6d2c381de8ba4aa
+
+COCOAPODS: 1.17.0

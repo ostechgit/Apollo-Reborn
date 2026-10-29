@@ -1,0 +1,55 @@
+# Apollo rebuild — XcodeGen spec. Regenerate with `xcodegen generate`, then `pod install`.
+# Mirrors the shipped app: Apollo 1.15.11 (285), built with Xcode 14.2 / iOS 16.2 SDK,
+# minimum iOS 15.0, ObjC/Swift mix with CocoaPods frameworks + statically linked SPM code.
+name: ApolloRebuild
+options:
+  bundleIdPrefix: com.omarsalam
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "14.2"   # keeps the project format readable by CocoaPods' xcodeproj gem
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+packages:
+  # Statically linked into the original main binary (found via Swift module names).
+  swift-collections:
+    url: https://github.com/apple/swift-collections
+    from: "1.0.4"
+  swift-markdown:
+    url: https://github.com/apple/swift-markdown
+    from: "0.2.0"
+  SwiftUI-Introspect:
+    url: https://github.com/siteline/SwiftUI-Introspect
+    exactVersion: "0.2.3"   # last release with the `Introspect` module name Apollo uses
+
+targets:
+  Apollo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: Apollo
+        PRODUCT_BUNDLE_IDENTIFIER: com.omarsalam.ApolloRebuild
+        MARKETING_VERSION: "1.15.11"
+        CURRENT_PROJECT_VERSION: "285"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Apollo
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Apollo-Bridging-Header.h
+    dependencies:
+      - package: swift-collections
+        product: OrderedCollections
+      - package: swift-collections
+        product: DequeModule
+      - package: swift-markdown
+        product: Markdown
+      - package: SwiftUI-Introspect
+        product: Introspect

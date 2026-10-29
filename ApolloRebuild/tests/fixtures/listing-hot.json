@@ -1,0 +1,148 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_1fx0006",
+    "dist": 6,
+    "modhash": null,
+    "geo_filter": "",
+    "before": null,
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1fx0001", "name": "t3_1fx0001",
+          "title": "Weekly discussion thread: what are you building this week?",
+          "author": "AutoModerator", "subreddit": "iOSProgramming", "subreddit_id": "t5_2s61a",
+          "subreddit_name_prefixed": "r/iOSProgramming", "subreddit_type": "public",
+          "domain": "self.iOSProgramming", "is_self": true,
+          "url": "https://www.reddit.com/r/iOSProgramming/comments/1fx0001/weekly_discussion_thread/",
+          "permalink": "/r/iOSProgramming/comments/1fx0001/weekly_discussion_thread/",
+          "selftext": "Share what you're working on.\n\n**Rules:** be nice.",
+          "selftext_html": "&lt;!-- SC_OFF --&gt;&lt;div class=\"md\"&gt;&lt;p&gt;Share what you&amp;#39;re working on.&lt;/p&gt;&lt;/div&gt;",
+          "thumbnail": "self", "post_hint": null,
+          "created_utc": 1761600000.0, "edited": false,
+          "score": 42, "ups": 42, "downs": 0, "upvote_ratio": 0.96, "likes": null,
+          "num_comments": 128, "gilded": 0, "over_18": false, "spoiler": false,
+          "is_original_content": false, "is_video": false, "stickied": true, "locked": false,
+          "archived": false, "saved": false, "hidden": false, "visited": false,
+          "distinguished": "moderator", "link_flair_text": "Weekly", "author_flair_text": null,
+          "suggested_sort": "new", "removed_by_category": null, "media": null, "view_count": null
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1fx0002", "name": "t3_1fx0002",
+          "title": "Sunrise over the Blue Mountains this morning [OC] [4032x3024]",
+          "author": "photo_person", "subreddit": "EarthPorn", "subreddit_id": "t5_2sbq3",
+          "domain": "i.redd.it", "is_self": false,
+          "url": "https://i.redd.it/abcdefgh1234.jpeg",
+          "permalink": "/r/EarthPorn/comments/1fx0002/sunrise_over_the_blue_mountains/",
+          "selftext": "", "selftext_html": null,
+          "thumbnail": "https://b.thumbs.redditmedia.com/thumb0002.jpg",
+          "post_hint": "image",
+          "preview": {
+            "enabled": true,
+            "images": [
+              {
+                "id": "img0002",
+                "source": {"url": "https://preview.redd.it/abcdefgh1234.jpeg?auto=webp&s=src", "width": 4032, "height": 3024},
+                "resolutions": [
+                  {"url": "https://preview.redd.it/abcdefgh1234.jpeg?width=108&s=a", "width": 108, "height": 81},
+                  {"url": "https://preview.redd.it/abcdefgh1234.jpeg?width=640&s=c", "width": 640, "height": 480},
+                  {"url": "https://preview.redd.it/abcdefgh1234.jpeg?width=216&s=b", "width": 216, "height": 162},
+                  {"url": "https://preview.redd.it/abcdefgh1234.jpeg?width=1080&s=d", "width": 1080, "height": 810}
+                ],
+                "variants": {}
+              }
+            ]
+          },
+          "created_utc": 1761590000, "edited": 1761595000.5,
+          "score": 18342, "ups": 18342, "downs": 0, "upvote_ratio": 0.98, "likes": true,
+          "num_comments": 311, "gilded": 2, "over_18": false, "spoiler": false,
+          "is_original_content": true, "is_video": false, "stickied": false, "locked": false,
+          "archived": false, "saved": true, "hidden": false, "visited": false,
+          "distinguished": null, "link_flair_text": null, "author_flair_text": "Photographer",
+          "media": null, "view_count": null
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1fx0003", "name": "t3_1fx0003",
+          "title": "Swift 6.3 released with improved concurrency diagnostics",
+          "author": "swiftnews", "subreddit": "swift", "subreddit_id": "t5_2yw4w",
+          "domain": "swift.org", "is_self": false,
+          "url": "https://www.swift.org/blog/swift-6.3-released/",
+          "permalink": "/r/swift/comments/1fx0003/swift_63_released/",
+          "selftext": "", "thumbnail": "https://a.thumbs.redditmedia.com/thumb0003.jpg",
+          "post_hint": "link",
+          "preview": {"images": [{"source": {"url": "https://external-preview.redd.it/link0003.png?s=src", "width": 1200, "height": 630}, "resolutions": [{"url": "https://external-preview.redd.it/link0003.png?width=320&s=x", "width": 320, "height": 168}]}]},
+          "created_utc": 1761580000, "edited": false,
+          "score": 911, "ups": 911, "downs": 0, "upvote_ratio": 0.95, "likes": false,
+          "num_comments": 77, "gilded": 0, "over_18": false, "spoiler": false,
+          "is_video": false, "stickied": false, "locked": true, "archived": false,
+          "saved": false, "hidden": false, "visited": true, "distinguished": null,
+          "link_flair_text": "News", "media": null
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1fx0004", "name": "t3_1fx0004",
+          "title": "My cat discovering the laser pointer for the first time",
+          "author": "cat_owner_99", "subreddit": "aww", "subreddit_id": "t5_2qh1o",
+          "domain": "v.redd.it", "is_self": false, "is_video": true,
+          "url": "https://v.redd.it/vid0004",
+          "permalink": "/r/aww/comments/1fx0004/my_cat_discovering_the_laser_pointer/",
+          "thumbnail": "https://b.thumbs.redditmedia.com/thumb0004.jpg",
+          "post_hint": "hosted:video",
+          "preview": {"images": [{"source": {"url": "https://external-preview.redd.it/vid0004.png?s=src", "width": 720, "height": 1280}, "resolutions": [{"url": "https://external-preview.redd.it/vid0004.png?width=320&s=v", "width": 320, "height": 568}]}]},
+          "media": {"reddit_video": {"fallback_url": "https://v.redd.it/vid0004/DASH_720.mp4?source=fallback", "hls_url": "https://v.redd.it/vid0004/HLSPlaylist.m3u8", "height": 1280, "width": 720, "duration": 21, "is_gif": false}},
+          "created_utc": 1761570000, "edited": false,
+          "score": 52310, "ups": 52310, "downs": 0, "upvote_ratio": 0.97, "likes": null,
+          "num_comments": 1204, "gilded": 0, "over_18": false, "spoiler": false,
+          "stickied": false, "locked": false, "archived": false, "saved": false,
+          "hidden": false, "visited": false, "distinguished": null
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1fx0005", "name": "t3_1fx0005",
+          "title": "A few shots from my trip to Iceland",
+          "author": "traveller", "subreddit": "travel", "subreddit_id": "t5_2qh41",
+          "domain": "reddit.com", "is_self": false, "is_gallery": true,
+          "url": "https://www.reddit.com/gallery/1fx0005",
+          "permalink": "/r/travel/comments/1fx0005/a_few_shots_from_my_trip_to_iceland/",
+          "thumbnail": "https://b.thumbs.redditmedia.com/thumb0005.jpg",
+          "gallery_data": {"items": [{"media_id": "g1", "id": 1}, {"media_id": "g2", "id": 2}, {"media_id": "g3", "id": 3}]},
+          "media_metadata": {"g1": {"status": "valid", "e": "Image", "m": "image/jpg", "s": {"u": "https://preview.redd.it/g1.jpg?s=1", "x": 3000, "y": 2000}}},
+          "created_utc": 1761560000, "edited": false,
+          "score": 2210, "ups": 2210, "downs": 0, "upvote_ratio": 0.99, "likes": null,
+          "num_comments": 96, "gilded": 0, "over_18": false, "spoiler": false,
+          "is_video": false, "stickied": false, "locked": false, "archived": false,
+          "saved": false, "hidden": false, "visited": false, "distinguished": null, "media": null
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1fx0006", "name": "t3_1fx0006",
+          "title": "Ending explained (spoilers for the finale)",
+          "author": "[deleted]", "subreddit": "television", "subreddit_id": "t5_2qh6e",
+          "domain": "self.television", "is_self": true,
+          "url": "https://www.reddit.com/r/television/comments/1fx0006/ending_explained/",
+          "permalink": "/r/television/comments/1fx0006/ending_explained/",
+          "selftext": "[removed]", "thumbnail": "spoiler",
+          "created_utc": 1761550000, "edited": false,
+          "score": 0, "ups": 0, "downs": 0, "upvote_ratio": 0.5, "likes": null,
+          "num_comments": 3, "gilded": 0, "over_18": true, "spoiler": true,
+          "is_video": false, "stickied": false, "locked": false, "archived": true,
+          "saved": false, "hidden": false, "visited": false, "distinguished": null,
+          "removed_by_category": "moderator", "media": null
+        }
+      }
+    ]
+  }
+}

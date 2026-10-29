@@ -1,0 +1,45 @@
+# Pods bundled as frameworks in the shipped Apollo 1.15.11 (Payload/Apollo.app/Frameworks).
+# CocoaPods stamped every framework with the app's version, so the real pod versions are
+# not recorded in the IPA. These are the newest releases available before Apollo's
+# final build (mid-2023); verify individually against the binaries when a mismatch shows up.
+platform :ios, '15.0'
+use_frameworks!
+inhibit_all_warnings!
+
+target 'Apollo' do
+  pod 'Texture', '~> 3.1'              # AsyncDisplayKit.framework (+ PINRemoteImage, PINCache, PINOperation)
+  pod 'Texture/IGListKit', '~> 3.1'
+  pod 'IGListKit', '~> 4.0'            # IGListKit + IGListDiffKit
+  pod 'AFNetworking', '~> 4.0'         # also RedditKit's transport
+  pod 'Mantle', '~> 2.2'               # RedditKit's model layer (RDK* subclass MTLModel)
+  pod 'Charts', '~> 4.1'               # pre-DGCharts rename; module name `Charts`
+  pod 'Eureka', '~> 5.4'               # Apollo's native settings forms
+  pod 'FLAnimatedImage', '~> 1.0'
+  pod 'Valet', '~> 4.1'                # account secrets in the keychain
+  pod 'Lockbox', '~> 3.0'
+  pod 'CocoaLumberjack/Swift', '~> 3.8'
+  pod 'Unbox', '~> 4.0'
+end
+
+post_install do |installer|
+  # AFNetworking 4.0.1 imports <netinet6/in6.h>, which current SDKs reject with #error;
+  # <netinet/in.h> provides the same declarations. Re-applied on every `pod install`.
+  Dir.glob(File.join(installer.sandbox.root, 'AFNetworking/AFNetworking/*.m')).each do |path|
+    src = File.read(path)
+    next unless src.include?('<netinet6/in6.h>')
+    File.chmod(0644, path)
+    File.write(path, src.gsub('#import <netinet6/in6.h>', '#import <netinet/in.h>'))
+  end
+
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |c|
+      # Old podspecs declare iOS 8/9 floors, which current Xcode refuses to build.
+      c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      c.build_settings['SWIFT_VERSION'] ||= '5.0'
+      # Diagnostics that newer clang/SDKs make errors by default in 2020-era pod code:
+      #   parentheses     - Texture's ASTextLayout.mm `a < b < c` comparisons
+      #   private-header  - AFNetworking's direct #import <netinet6/in6.h>
+      c.build_settings['OTHER_CFLAGS'] = '$(inherited) -Wno-error=parentheses -Wno-error=private-header'
+    end
+  end
+end
