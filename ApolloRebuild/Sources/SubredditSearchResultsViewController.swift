@@ -49,12 +49,16 @@ class SubredditSearchResultsViewController: UIViewController, UITableViewDataSou
     }
     
     private func loadSearchResults() {
-        // In the original app, this would search Reddit for subreddits
-        // For now, we'll use placeholder data
+        // Search Reddit for subreddits
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.searchSubreddits(query: self.searchQuery, limit: 25) { [weak self] subreddits, error in
+            if let subreddits = subreddits {
+                self?.searchResults = subreddits
+            } else if let error = error {
+                print("Subreddit search failed: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

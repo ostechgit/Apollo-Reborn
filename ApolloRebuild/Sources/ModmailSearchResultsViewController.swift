@@ -49,12 +49,16 @@ class ModmailSearchResultsViewController: UIViewController, UITableViewDataSourc
     }
     
     private func loadSearchResults() {
-        // In the original app, this would search modmail conversations
-        // For now, we'll use placeholder data
+        // Search modmail conversations
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.searchModmail(query: self.searchQuery, limit: 25) { [weak self] conversations, error in
+            if let conversations = conversations {
+                self?.searchResults = conversations
+            } else if let error = error {
+                print("Modmail search failed: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

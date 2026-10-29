@@ -38,12 +38,16 @@ class SavedPostsCommentsViewController: UIViewController, UITableViewDataSource,
     }
     
     private func loadSavedItems() {
-        // In the original app, this would fetch saved items from Reddit
-        // For now, we'll use placeholder data
+        // Fetch saved items from Reddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.savedLinks(pagination: nil) { [weak self] links, error in
+            if let links = links {
+                self?.savedItems = links
+            } else if let error = error {
+                print("Failed to load saved items: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

@@ -38,12 +38,16 @@ class ModmailInboxViewController: UIViewController, UITableViewDataSource, UITab
     }
     
     private func loadConversations() {
-        // In the original app, this would fetch modmail conversations from Reddit
-        // For now, we'll use placeholder data
+        // Fetch modmail conversations from Reddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.modmailConversations(pagination: nil) { [weak self] conversations, error in
+            if let conversations = conversations {
+                self?.conversations = conversations
+            } else if let error = error {
+                print("Failed to load modmail: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

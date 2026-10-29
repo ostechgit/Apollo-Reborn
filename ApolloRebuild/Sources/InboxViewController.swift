@@ -69,12 +69,16 @@ class InboxViewController: UIViewController, UITableViewDataSource, UITableViewD
     }
 
     private func loadMessages() {
-        // In the original app, this would fetch messages from Reddit
-        // For now, we'll use placeholder data
+        // Fetch inbox messages from Reddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.inboxMessages(pagination: nil) { [weak self] messages, error in
+            if let messages = messages {
+                self?.messages = messages
+            } else if let error = error {
+                print("Failed to load inbox: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

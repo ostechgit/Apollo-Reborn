@@ -49,12 +49,16 @@ class ModQueueViewController: UIViewController, UITableViewDataSource, UITableVi
     }
     
     private func loadQueue() {
-        // In the original app, this would fetch mod queue items from Reddit
-        // For now, we'll use placeholder data
+        // Fetch mod queue items from Reddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.moderationQueueForSubredditWithName(self.subredditName, pagination: nil) { [weak self] links, error in
+            if let links = links {
+                self?.queueItems = links
+            } else if let error = error {
+                print("Failed to load mod queue: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

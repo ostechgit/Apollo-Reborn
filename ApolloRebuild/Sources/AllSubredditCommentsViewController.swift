@@ -49,12 +49,16 @@ class AllSubredditCommentsViewController: UIViewController, UITableViewDataSourc
     }
     
     private func loadComments() {
-        // In the original app, this would fetch all comments for the subreddit
-        // For now, we'll use placeholder data
+        // Fetch all comments for the subreddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.commentsInSubredditWithName(self.subredditName, category: .new, pagination: nil) { [weak self] comments, error in
+            if let comments = comments {
+                self?.comments = comments
+            } else if let error = error {
+                print("Failed to load comments: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

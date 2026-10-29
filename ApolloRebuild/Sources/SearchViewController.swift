@@ -43,13 +43,17 @@ class SearchViewController: UIViewController, UITableViewDataSource, UITableView
     }
     
     private func performSearch(query: String) {
-        // In the original app, this would search Reddit
-        // For now, we'll use placeholder data
+        // Search Reddit for posts matching the query
         self.searchQuery = query
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.search(query: query, sort: .relevance, time: .all, subreddit: nil, pagination: nil) { [weak self] links, error in
+            if let links = links {
+                self?.searchResults = links
+            } else if let error = error {
+                print("Search failed: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

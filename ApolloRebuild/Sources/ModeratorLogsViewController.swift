@@ -49,12 +49,16 @@ class ModeratorLogsViewController: UIViewController, UITableViewDataSource, UITa
     }
     
     private func loadLogs() {
-        // In the original app, this would fetch mod logs from Reddit
-        // For now, we'll use placeholder data
+        // Fetch mod logs from Reddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.moderationLogForSubredditWithName(self.subredditName, pagination: nil) { [weak self] logs, error in
+            if let logs = logs {
+                self?.logs = logs
+            } else if let error = error {
+                print("Failed to load mod logs: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

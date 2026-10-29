@@ -38,12 +38,16 @@ class RedditListViewController: UIViewController, UITableViewDataSource, UITable
     }
     
     private func loadSubreddits() {
-        // In the original app, this would fetch subreddits from Reddit
-        // For now, we'll use placeholder data
+        // Fetch subscribed subreddits from Reddit
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.subscribedSubreddits(pagination: nil) { [weak self] subreddits, error in
+            if let subreddits = subreddits {
+                self?.subreddits = subreddits
+            } else if let error = error {
+                print("Failed to load subreddits: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

@@ -38,12 +38,16 @@ class NotificationsViewController: UIViewController, UITableViewDataSource, UITa
     }
     
     private func loadNotifications() {
-        // In the original app, this would fetch notifications from Reddit
-        // For now, we'll use placeholder data
+        // Fetch notifications from Reddit (using unread inbox as proxy)
         self.isLoading = true
         
-        // Simulate loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        RDKClient.shared.unreadInboxMessages(pagination: nil) { [weak self] messages, error in
+            if let messages = messages {
+                self?.notifications = messages
+            } else if let error = error {
+                print("Failed to load notifications: \(error.localizedDescription)")
+            }
+            
             self?.isLoading = false
             self?.tableView?.reloadData()
         }

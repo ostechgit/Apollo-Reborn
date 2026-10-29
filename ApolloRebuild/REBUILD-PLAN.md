@@ -6,7 +6,7 @@
 
 **RE Artifacts:** `~/Projects/Apollo-Source-Private/` - 53,316 decompiled functions, 7,806 recovered names, naming pipeline complete.
 
-## Status: Phase 1 Complete, Phase 2 In Progress
+## Status: Phase 1 Complete, Phase 2 In Progress (13/31 fixed)
 
 Last updated: 2026-10-29
 
@@ -69,25 +69,25 @@ Last updated: 2026-10-29
 ## Phase 2: Fix Placeholder View Controllers (31 files)
 
 ### Priority 1: Core Navigation
-- **RedditListViewController.swift** - Subreddit list (currently placeholder)
-- **SearchViewController.swift** - Search results (currently placeholder)
-- **MultiredditViewController.swift** - Multireddit posts (currently placeholder)
+- ✅ **RedditListViewController.swift** - Subreddit list (fixed)
+- ✅ **SearchViewController.swift** - Search results (fixed)
+- ✅ **MultiredditViewController.swift** - Multireddit posts (fixed)
 
 ### Priority 2: User Content
-- **InboxViewController.swift** - Messages (currently placeholder)
-- **NotificationsViewController.swift** - Notifications (currently placeholder)
-- **SavedPostsCommentsViewController.swift** - Saved items (currently placeholder)
-- **AllSubredditCommentsViewController.swift** - All comments for subreddit (currently placeholder)
+- ✅ **InboxViewController.swift** - Messages (fixed)
+- ✅ **NotificationsViewController.swift** - Notifications (fixed)
+- ✅ **SavedPostsCommentsViewController.swift** - Saved items (fixed)
+- ✅ **AllSubredditCommentsViewController.swift** - All comments for subreddit (fixed)
 
 ### Priority 3: Search Results
-- **PostsSearchResultsViewController.swift** - Post search results (currently placeholder)
-- **SubredditSearchResultsViewController.swift** - Subreddit search results (currently placeholder)
-- **ModmailSearchResultsViewController.swift** - Modmail search results (currently placeholder)
+- ✅ **PostsSearchResultsViewController.swift** - Post search results (fixed)
+- ✅ **SubredditSearchResultsViewController.swift** - Subreddit search results (fixed)
+- ✅ **ModmailSearchResultsViewController.swift** - Modmail search results (fixed)
 
 ### Priority 4: Moderation
-- **ModQueueViewController.swift** - Mod queue (currently placeholder)
-- **ModeratorLogsViewController.swift** - Mod logs (currently placeholder)
-- **ModmailInboxViewController.swift** - Modmail inbox (currently placeholder)
+- ✅ **ModQueueViewController.swift** - Mod queue (fixed)
+- ✅ **ModeratorLogsViewController.swift** - Mod logs (fixed)
+- ✅ **ModmailInboxViewController.swift** - Modmail inbox (fixed)
 
 ### Priority 5: Utility/Integration
 - **GfycatClient.swift** - Gfycat API client (currently placeholder)
@@ -157,4 +157,5 @@ python3 tests/mock_reddit_server.py --port 8765
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.
-- **2026-10-29:** Phase 1 complete - implemented all 7 missing source files (43 functions total). Cross-referenced apollo-reborn tweak source for correct function signatures and action kinds. Next: Phase 2 - fix 31 placeholder view controllers with real RDKClient API calls.
+- **2026-10-29:** Phase 1 complete - implemented all 7 missing source files (43 functions total). Cross-referenced apollo-reborn tweak source for correct function signatures and action kinds.
+- **2026-10-29:** Phase 2 progress - fixed 13/31 placeholder view controllers with real RDKClient API calls. Remaining: 18 utility/integration files (GfycatClient, ImgurClient, WikipediaClient, WeatherManager, ReceiptDataBuddy, AppStoreBuddy, Astra managers, etc.).
