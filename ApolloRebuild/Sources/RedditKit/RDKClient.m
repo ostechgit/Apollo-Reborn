@@ -779,6 +779,34 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     return [self accountTaskWithPath:@"api/hide" parameters:@{@"id": link.fullName} completion:completion];
 }
 
+- (NSURLSessionDataTask *)userIconsForAccountFullNames:(NSArray<NSString *> *)fullNames
+                                            completion:(void (^)(NSDictionary<NSString *, NSString *> *, NSError *))completion {
+    if (fullNames.count == 0) {
+        completion(@{}, nil);
+        return nil;
+    }
+    NSString *ids = [fullNames componentsJoinedByString:@","];
+    return [self getPath:@"api/user_data_by_account_ids.json" parameters:@{@"ids": ids} completion:^(id response, NSError *error) {
+        if (error != nil || ![response isKindOfClass:[NSDictionary class]]) {
+            completion(nil, error);
+            return;
+        }
+        NSMutableDictionary<NSString *, NSString *> *icons = [NSMutableDictionary dictionary];
+        [(NSDictionary *)response enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL *stop) {
+            if (![key isKindOfClass:[NSString class]] || ![value isKindOfClass:[NSDictionary class]]) {
+                return;
+            }
+            // This endpoint answers with `profile_img` (a snoovatar headshot), not
+            // the `icon_img` the subreddit endpoint uses.
+            NSString *iconURL = value[@"profile_img"];
+            if ([iconURL isKindOfClass:[NSString class]] && iconURL.length > 0) {
+                icons[key] = iconURL;
+            }
+        }];
+        completion(icons, nil);
+    }];
+}
+
 - (NSURLSessionDataTask *)commentsInSubredditWithName:(NSString *)name category:(RDKSubredditCategory)category pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
     NSString *path = [NSString stringWithFormat:@"r/%@/comments/%@.json", name, RDKStringFromSubredditCategory(category)];
     return [self listingTaskWithPath:path parameters:nil pagination:pagination completion:completion];

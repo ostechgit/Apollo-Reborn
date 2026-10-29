@@ -1,0 +1,109 @@
+import UIKit
+import AsyncDisplayKit
+
+// RichMediaNode - the media strip of a post: a full-bleed image, a gallery, a
+// video preview, or an external link's preview card.
+// Reconstructed from apollo-base 1.15.11 binary analysis (Apollo.RichMediaNode)
+// and measured off 3x screenshots of the original.
+//
+// The original decides how to draw a post from Reddit's own hints: a post that
+// points at Reddit-hosted media (image, gallery, v.redd.it video) fills the
+// whole cell width with no insets and no rounded corners, while a post that
+// points at another site gets a small rounded preview card inset 16pt, drawn
+// by LinkButtonNode. That distinction is visible in the original's feed: the
+// r/pics meme is edge to edge, the BBC article is a card.
+//
+// The original also plays video inline, handles crossposts, albums and the
+// NSFW/spoiler veil; none of that is wired up here yet.
+
+class RichMediaNode: ASControlNode {
+
+    enum Presentation {
+        /// Reddit-hosted media: edge to edge, aspect preserved.
+        case fullBleed
+        /// Another site's link: the inset preview card.
+        case linkCard
+    }
+
+    let link: RDKLink
+    let presentation: Presentation
+    /// Called when the media is tapped; the screen decides what to open.
+    var onTapped: (() -> Void)?
+
+    private let imageNode = ASNetworkImageNode()
+    private let playNode = ASImageNode()
+    private let cardNode: LinkButtonNode?
+
+    /// Portrait images are cropped rather than allowed to run past this many
+    /// cells-worth of height (the original caps feed media the same way).
+    private let maximumAspectRatio: CGFloat = 1.25
+
+    init?(link: RDKLink, isShownInCommentsHeader: Bool = false) {
+        guard link.hasPreviewImage else { return nil }
+
+        self.link = link
+        // post_hint is Reddit's own statement about where the link points:
+        // "image", "hosted:video" and gallery posts are Reddit media, "link"
+        // is somebody else's page.
+        let isRedditMedia = link.isImageLink || link.isVideo || link.isGallery
+        self.presentation = isRedditMedia ? .fullBleed : .linkCard
+        self.cardNode = isRedditMedia ? nil : LinkButtonNode(link: link)
+        super.init()
+        self.automaticallyManagesSubnodes = true
+
+        self.imageNode.contentMode = .scaleAspectFill
+        self.imageNode.clipsToBounds = true
+        self.imageNode.placeholderColor = .secondarySystemBackground
+        self.imageNode.placeholderEnabled = true
+        // The node itself is the tap target, so no child may swallow the touch.
+        self.imageNode.isUserInteractionEnabled = false
+
+        self.playNode.image = ApolloAssets.originalImage(named: "video-playhead-large")
+        self.playNode.style.preferredSize = CGSize(width: 48, height: 48)
+        self.playNode.isUserInteractionEnabled = false
+
+        // The whole media area is one tap target: the picture, the link card
+        // and the gallery all open the same thing.
+        self.addTarget(self, action: #selector(mediaTapped), forControlEvents: .touchUpInside)
+    }
+
+    // MARK: - Layout
+
+    override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
+        switch self.presentation {
+        case .linkCard:
+            guard let cardNode = self.cardNode else { return ASLayoutSpec() }
+            // Measured: the card sits 16pt below the title's last line, inset
+            // 16pt from the cell's edges, and draws its own footer padding.
+            return ASInsetLayoutSpec(insets: UIEdgeInsets(top: 16, left: 16, bottom: 0, right: 16),
+                                     child: cardNode)
+
+        case .fullBleed:
+            let width = max(constrainedSize.max.width, 1)
+            let scale = self.apolloDrawingTraits.displayScale
+            let item = self.link.previewImage(forWidth: width, scale: scale)
+            let url = item?.url.flatMap(URL.init(string:))
+            if self.imageNode.url != url {
+                self.imageNode.url = url
+            }
+
+            let natural = CGFloat(item?.height ?? 0) / CGFloat(max(item?.width ?? 0, 1))
+            let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
+            var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
+
+            if self.link.isVideo {
+                media = ASOverlayLayoutSpec(child: media,
+                                            overlay: ASCenterLayoutSpec(centeringOptions: .XY,
+                                                                        sizingOptions: [],
+                                                                        child: self.playNode))
+            }
+            return media
+        }
+    }
+
+    // MARK: - Actions
+
+    @objc private func mediaTapped() {
+        self.onTapped?()
+    }
+}

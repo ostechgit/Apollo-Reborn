@@ -14,7 +14,7 @@ enum PostsType {
     // A multireddit needs both the name (for the title) and the path Reddit
     // serves its listing from (api/multi/mine's "path", e.g. user/x/m/y)
     case multireddit(name: String, path: String)
-    
+
     var title: String {
         switch self {
         case .frontPage: return "Home"
@@ -32,15 +32,15 @@ enum PostsType {
 // The original builds on ASTableViewController + ListAdapter and adds the jump
 // bar, hide-read-posts, filters and position restoration.
 
-class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate, PostCellActionDelegate {
-    
+class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate, PostCellActionDelegate, UISearchBarDelegate {
+
     let tableNode = ASTableNode(style: .plain)
     let currentPostsType: PostsType
     private(set) var links: [RDKLink] = []
-    
+
     var currentSort: RDKSubredditCategory = .hot
     var currentTimeSort: RDKTimeSortingMethod = .none
-    
+
     private var nextPage: RDKPagination?
     private var hasReachedEnd = false
     private var isLoading = false
@@ -49,34 +49,34 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
     private let pageSize: UInt = 25
     private let refreshControl = UIRefreshControl()
     private var messageView: FeedMessageView?
-    
+
     init(postsType: PostsType) {
         self.currentPostsType = postsType
         super.init(nibName: nil, bundle: nil)
     }
-    
+
     required init?(coder: NSCoder) {
         self.currentPostsType = .frontPage
         super.init(coder: coder)
     }
-    
+
     private var isSpecificSubreddit: Bool {
         if case .subreddit = self.currentPostsType { return true }
         return false
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+
         self.title = self.currentPostsType.title
         self.view.backgroundColor = .systemBackground
-        
+
         self.tableNode.dataSource = self
         self.tableNode.delegate = self
         self.tableNode.leadingScreensForBatching = 2
         self.tableNode.backgroundColor = .systemBackground
         self.view.addSubnode(self.tableNode)
-        
+
         let tableView = self.tableNode.view
         tableView.separatorStyle = .none
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -86,34 +86,212 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             tableView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
         ])
-        
+
         self.refreshControl.addTarget(self, action: #selector(refreshControlActivated), for: .valueChanged)
         tableView.refreshControl = self.refreshControl
-        
-        self.updateSortButton()
-        
+
+        self.configureNavigationBar()
+
         // A different account (or none) means a different front page and vote state
         NotificationCenter.default.addObserver(self, selector: #selector(accountDidChange), name: AccountManager.accountDidChangeNotification, object: nil)
-        
+
         self.reloadFromStart()
     }
-    
+
+    // MARK: - Navigation bar
+    //
+    // 1.15.11's feed nav bar is the stock iOS 26 chrome: a back chevron (the
+    // feed is pushed on top of the subreddit list), a title pill, and a grouped
+    // right pill holding the trophy button and the feed's ⋯ menu.
+
+    private func configureNavigationBar() {
+        // The right pill: the trophy and the feed's ⋯ share one glass capsule.
+        let more = UIBarButtonItem(image: ApolloAssets.image(named: "option-more"),
+                                   menu: self.feedMenu())
+        more.accessibilityLabel = "Feed Options"
+
+        let trophy = UIBarButtonItem(image: ApolloAssets.image(named: "option-trophy")?
+            .withTintColor(.label, renderingMode: .alwaysOriginal),
+                                     primaryAction: UIAction { [weak self] _ in
+            guard let self = self else { return }
+            self.navigationController?.pushViewController(ApolloUltraViewController(), animated: true)
+        })
+        trophy.accessibilityLabel = "Apollo Ultra"
+
+        self.navigationItem.rightBarButtonItems = [more, trophy]
+
+        // The title is Apollo's own DualLabelTitleButton (the "Home ⌄" pill),
+        // not the system title: it stays a button with a menu wherever the
+        // screen is in its navigation stack.
+        self.navigationItem.title = nil
+        self.navigationItem.titleView = self.titleBarView()
+
+        // The search field under the nav bar scrolls away with the content, as
+        // the original's does. Tapping it opens the Search tab.
+        self.navigationItem.searchController = self.feedSearchController
+        self.navigationItem.hidesSearchBarWhenScrolling = true
+    }
+
+    /// The feed's search field: a plain "Search" field, not a results list -
+    /// searching happens on the Search tab.
+    private lazy var feedSearchController: UISearchController = {
+        let controller = UISearchController(searchResultsController: nil)
+        controller.searchBar.delegate = self
+        controller.searchBar.placeholder = "Search"
+        controller.obscuresBackgroundDuringPresentation = false
+        return controller
+    }()
+
+    // MARK: - Menus
+
+    /// The title bar view: the feed's title button inside the glass capsule the
+    /// original draws around it on iOS 26.
+    private func titleBarView() -> UIView {
+        let button = self.titleButton()
+        let size = button.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        button.frame = CGRect(origin: .zero, size: size)
+        guard #available(iOS 26.0, *) else { return button }
+
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        let capsule = UIVisualEffectView(effect: effect)
+        capsule.frame = CGRect(origin: .zero, size: size)
+        capsule.layer.cornerRadius = size.height / 2
+        capsule.clipsToBounds = true
+        capsule.contentView.addSubview(button)
+        capsule.widthAnchor.constraint(equalToConstant: size.width).isActive = true
+        capsule.heightAnchor.constraint(equalToConstant: size.height).isActive = true
+        return capsule
+    }
+
+    /// The feed's title button. It carries the feed name and opens the feed and
+    /// sort menu.
+    private func titleButton() -> DualLabelTitleButton {
+        let button = DualLabelTitleButton()
+        button.primaryTitle = self.currentPostsType.title
+        button.menu = self.titleMenu()
+        button.accessibilityLabel = "Feed"
+        return button
+    }
+
+    /// The feeds the title can switch to, plus the sort orders (the original
+    /// keeps both behind the title).
+    private func titleMenu() -> UIMenu {
+        var feedActions: [UIMenuElement] = []
+        let feeds: [(String, PostsType)] = [
+            ("Home", .frontPage), ("Popular", .popular), ("All", .all)
+        ]
+        for (title, type) in feeds {
+            feedActions.append(UIAction(title: title, state: self.matches(type) ? .on : .off) { [weak self] _ in
+                self?.switchTo(type)
+            })
+        }
+        for name in self.favoriteSubreddits() {
+            feedActions.append(UIAction(title: name, state: self.matches(.subreddit(name)) ? .on : .off) { [weak self] _ in
+                self?.switchTo(.subreddit(name))
+            })
+        }
+        return UIMenu(title: "", children: [UIMenu(title: "Feed", options: .displayInline, children: feedActions),
+                                            self.sortMenu()])
+    }
+
+    private func matches(_ type: PostsType) -> Bool {
+        switch (self.currentPostsType, type) {
+        case (.frontPage, .frontPage), (.popular, .popular), (.all, .all): return true
+        case (.subreddit(let a), .subreddit(let b)): return a.caseInsensitiveCompare(b) == .orderedSame
+        default: return false
+        }
+    }
+
+    private func favoriteSubreddits() -> [String] {
+        // Apollo stores its favorites in the app group under "FavoriteSubreddits"
+        let group = UserDefaults(suiteName: "group.com.christianselig.apollo")
+        let favorites = group?.array(forKey: "FavoriteSubreddits") as? [String]
+        return favorites ?? (UserDefaults.standard.array(forKey: "FavoriteSubreddits") as? [String] ?? [])
+    }
+
+    private func switchTo(_ type: PostsType) {
+        self.navigationController?.pushViewController(PostsViewController(postsType: type), animated: true)
+    }
+
+    private func sortMenu() -> UIMenu {
+        let sorts: [(String, RDKSubredditCategory)] = [
+            ("Hot", .hot), ("Best", .best), ("New", .new), ("Rising", .rising)
+        ]
+        var items: [UIMenuElement] = sorts.map { title, sort in
+            UIAction(title: title, state: self.currentSort == sort ? .on : .off) { [weak self] _ in
+                self?.applySort(sort, time: .none)
+            }
+        }
+        let times: [(String, RDKTimeSortingMethod)] = [("Past Hour", .hour), ("Past 24 Hours", .day), ("Past Week", .week), ("Past Month", .month), ("Past Year", .year), ("All Time", .allTime)]
+        for (title, sort) in [("Top", RDKSubredditCategory.top), ("Controversial", RDKSubredditCategory.controversial)] {
+            let timeActions = times.map { timeTitle, time in
+                UIAction(title: timeTitle, state: self.currentSort == sort && self.currentTimeSort == time ? .on : .off) { [weak self] _ in
+                    self?.applySort(sort, time: time)
+                }
+            }
+            items.append(UIMenu(title: title, children: timeActions))
+        }
+        return UIMenu(title: "Sort", children: items)
+    }
+
+    /// The feed's ⋯ menu, as measured in the original: Gallery View, Hide Read
+    /// Posts, the thumbnail-size toggle and Share. Only the two that the
+    /// rebuild can honour are wired up so far.
+    private func feedMenu() -> UIMenu {
+        let hideRead = UIAction(title: "Hide Read Posts",
+                                image: ApolloAssets.image(named: "option-hide-read"),
+                                state: self.hidesReadPosts ? .on : .off) { [weak self] _ in
+            guard let self = self else { return }
+            self.hidesReadPosts.toggle()
+            self.applyReadFilter()
+            self.configureNavigationBar()
+        }
+        let share = UIAction(title: "Share", image: ApolloAssets.image(named: "symbol-share")) { [weak self] _ in
+            guard let self = self else { return }
+            let url: URL?
+            switch self.currentPostsType {
+            case .frontPage: url = URL(string: "https://www.reddit.com")
+            case .popular: url = URL(string: "https://www.reddit.com/r/popular/")
+            case .all: url = URL(string: "https://www.reddit.com/r/all/")
+            case .subreddit(let name): url = URL(string: "https://www.reddit.com/r/\(name)/")
+            case .multireddit(_, let path): url = URL(string: "https://www.reddit.com/\(path)/")
+            }
+            guard let shareURL = url else { return }
+            let controller = UIActivityViewController(activityItems: [shareURL], applicationActivities: nil)
+            controller.popoverPresentationController?.barButtonItem = self.navigationItem.rightBarButtonItems?.first
+            self.present(controller, animated: true)
+        }
+        return UIMenu(title: "", children: [hideRead, share])
+    }
+
+    /// Reddit's `visited` flag is what "read" means in the feed.
+    private(set) var hidesReadPosts = false
+
+    private func applyReadFilter() {
+        self.tableNode.reloadData()
+    }
+
+    private var visibleLinks: [RDKLink] {
+        return self.hidesReadPosts ? self.links.filter { !$0.visited } : self.links
+    }
+
     @objc private func accountDidChange() {
         self.reloadFromStart()
     }
-    
+
     @objc private func refreshControlActivated() {
         self.reloadFromStart()
     }
-    
+
     // MARK: - Loading
-    
+
     func reloadFromStart() {
         self.loadGeneration += 1
         self.nextPage = nil
         self.hasReachedEnd = false
         self.isLoading = false
-        
+
         guard RDKClient.shared().hasClientIdentifier else {
             self.links = []
             self.tableNode.reloadData()
@@ -126,13 +304,13 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             }
             return
         }
-        
+
         if self.links.isEmpty && !self.refreshControl.isRefreshing {
             self.showMessage(title: nil, message: "Loading\u{2026}", buttonTitle: nil, action: nil)
         }
         self.loadNextPage(replacing: true, completion: nil)
     }
-    
+
     private func loadNextPage(replacing: Bool, completion: (() -> Void)?) {
         guard !self.isLoading else {
             completion?()
@@ -140,13 +318,13 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         }
         self.isLoading = true
         let generation = self.loadGeneration
-        
+
         let pagination = RDKPagination(limit: self.pageSize)
         pagination.after = replacing ? nil : self.nextPage?.after
         if self.currentSort == .top || self.currentSort == .controversial {
             pagination.timeMethod = self.currentTimeSort == .none ? .day : self.currentTimeSort
         }
-        
+
         let handler: RDKListingCompletionBlock = { [weak self] collection, nextPage, error in
             guard let self = self, generation == self.loadGeneration else {
                 completion?()
@@ -191,7 +369,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
                 self.hideMessage()
             }
         }
-        
+
         let client = RDKClient.shared()
         switch self.currentPostsType {
         case .frontPage:
@@ -212,49 +390,26 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             }
         }
     }
-    
+
     // MARK: - Sorting
-    
-    private func updateSortButton() {
-        let sorts: [(String, String, RDKSubredditCategory)] = [
-            ("Hot", "flame", .hot), ("Best", "rosette", .best), ("New", "sparkles", .new), ("Rising", "chart.line.uptrend.xyaxis", .rising)
-        ]
-        var items: [UIMenuElement] = sorts.map { title, image, sort in
-            UIAction(title: title, image: UIImage(systemName: image), state: self.currentSort == sort ? .on : .off) { [weak self] _ in
-                self?.applySort(sort, time: .none)
-            }
-        }
-        let times: [(String, RDKTimeSortingMethod)] = [("Past Hour", .hour), ("Past 24 Hours", .day), ("Past Week", .week), ("Past Month", .month), ("Past Year", .year), ("All Time", .allTime)]
-        for (title, image, sort) in [("Top", "chart.bar", RDKSubredditCategory.top), ("Controversial", "bolt", RDKSubredditCategory.controversial)] {
-            let timeActions = times.map { timeTitle, time in
-                UIAction(title: timeTitle, state: self.currentSort == sort && self.currentTimeSort == time ? .on : .off) { [weak self] _ in
-                    self?.applySort(sort, time: time)
-                }
-            }
-            items.append(UIMenu(title: title, image: UIImage(systemName: image), children: timeActions))
-        }
-        let button = UIBarButtonItem(image: UIImage(systemName: "arrow.up.arrow.down"), menu: UIMenu(title: "Sort Posts", children: items))
-        button.accessibilityLabel = "Sort"
-        self.navigationItem.rightBarButtonItem = button
-    }
-    
+
     private func applySort(_ sort: RDKSubredditCategory, time: RDKTimeSortingMethod) {
         self.currentSort = sort
         self.currentTimeSort = time
-        self.updateSortButton()
+        self.configureNavigationBar()
         self.links = []
         self.tableNode.reloadData()
         self.reloadFromStart()
     }
-    
+
     // MARK: - ASTableDataSource / ASTableDelegate
-    
+
     func tableNode(_ tableNode: ASTableNode, numberOfRowsInSection section: Int) -> Int {
-        return self.links.count
+        return self.visibleLinks.count
     }
-    
+
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
-        let link = self.links[indexPath.row]
+        let link = self.visibleLinks[indexPath.row]
         let inSpecificSubreddit = self.isSpecificSubreddit
         return { [weak self] in
             let node = LargePostCellNode(link: link, inSpecificSubreddit: inSpecificSubreddit)
@@ -262,16 +417,16 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             return node
         }
     }
-    
+
     func tableNode(_ tableNode: ASTableNode, didSelectRowAt indexPath: IndexPath) {
         tableNode.deselectRow(at: indexPath, animated: true)
-        self.navigationController?.pushViewController(CommentsViewController(link: self.links[indexPath.row]), animated: true)
+        self.navigationController?.pushViewController(CommentsViewController(link: self.visibleLinks[indexPath.row]), animated: true)
     }
-    
+
     func shouldBatchFetch(for tableNode: ASTableNode) -> Bool {
         return !self.links.isEmpty && !self.hasReachedEnd && !self.isLoading
     }
-    
+
     func tableNode(_ tableNode: ASTableNode, willBeginBatchFetchWith context: ASBatchContext) {
         // Texture calls this off the main thread
         DispatchQueue.main.async {
@@ -280,9 +435,9 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             }
         }
     }
-    
+
     // MARK: - PostCellActionDelegate
-    
+
     func postCell(_ cell: LargePostCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink) {
         guard AccountManager.shared.isLogged else {
             self.promptSignIn(reason: "Sign in to vote on posts.")
@@ -290,7 +445,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         }
         let previousStatus = link.voteStatus
         let previousScore = link.score
-        
+
         // Show the vote straight away and undo it if Reddit refuses
         func value(_ status: RDKVoteStatus) -> Int {
             switch status {
@@ -303,7 +458,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         link.voteStatus = newStatus
         link.score = previousScore + value(newStatus) - value(previousStatus)
         cell.updateActionState()
-        
+
         RDKClient.shared().voteOnThing(withFullName: link.fullName ?? "", direction: direction) { [weak self, weak cell] error in
             guard let error = error else { return }
             link.voteStatus = previousStatus
@@ -312,7 +467,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             self?.showError(title: "Couldn\u{2019}t Vote", error: error)
         }
     }
-    
+
     func postCell(_ cell: LargePostCellNode, didTapSaveOn link: RDKLink) {
         guard AccountManager.shared.isLogged else {
             self.promptSignIn(reason: "Sign in to save posts.")
@@ -321,7 +476,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         let wasSaved = link.saved
         link.saved = !wasSaved
         cell.updateActionState()
-        
+
         let completion: RDKCompletionBlock = { [weak self, weak cell] error in
             guard let error = error else { return }
             link.saved = wasSaved
@@ -334,9 +489,57 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             RDKClient.shared().saveThing(withFullName: link.fullName ?? "", completion: completion)
         }
     }
-    
-    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
-        if link.isVideo, let videoURL = link.redditVideoURL.flatMap(URL.init(string:)) {
+
+    /// The ⋯ in a post cell. Apollo opens its own action sheet here (Save,
+    /// Hide, Report, Share, ...); this starts with the three the rebuild can
+    /// carry out. A stock action sheet stands in until that sheet is rebuilt.
+    func postCell(_ cell: LargePostCellNode, didTapMoreOptionsOn link: RDKLink) {
+        let actions: [Action] = [
+            Action(title: link.saved ? "Unsave" : "Save", icon: nil, style: .default) { [weak self, weak cell] _ in
+                guard let self = self, let cell = cell else { return }
+                self.postCell(cell, didTapSaveOn: link)
+            },
+            Action(title: "Hide", icon: nil, style: .default) { [weak self, weak cell] _ in
+                guard let self = self, let cell = cell else { return }
+                self.hide(link, cell: cell)
+            },
+            Action(title: "Share", icon: nil, style: .default) { [weak self] _ in
+                guard let self = self, let url = link.permalinkURL else { return }
+                let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                controller.popoverPresentationController?.sourceView = cell.view
+                self.present(controller, animated: true)
+            }
+        ]
+        ActionController.shared.showActionSheet(actions: actions, fromViewController: self)
+    }
+
+    private func hide(_ link: RDKLink, cell: LargePostCellNode) {
+        guard AccountManager.shared.isLogged else {
+            self.promptSignIn(reason: "Sign in to hide posts.")
+            return
+        }
+        RDKClient.shared().hideLink(link) { [weak self] error in
+            guard let error = error else {
+                // A hidden post disappears from the feed, as in the original.
+                if let index = self?.links.firstIndex(where: { $0.fullName == link.fullName }) {
+                    self?.links.remove(at: index)
+                    self?.tableNode.reloadData()
+                }
+                return
+            }
+            self?.showError(title: "Couldn\u{2019}t Hide", error: error)
+        }
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapSubreddit named: String) {
+        self.navigationController?.pushViewController(PostsViewController(postsType: .subreddit(named)), animated: true)
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapAuthor named: String) {
+        self.navigationController?.pushViewController(ProfileViewController(username: named), animated: true)
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {        if link.isVideo, let videoURL = link.redditVideoURL.flatMap(URL.init(string:)) {
             // v.redd.it's fallback MP4 has no audio track; the original remuxes DASH audio in
             let player = AVPlayerViewController()
             player.player = AVPlayer(url: videoURL)
@@ -357,9 +560,21 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             self.present(SFSafariViewController(url: url), animated: true)
         }
     }
-    
+
+    // MARK: - UISearchBarDelegate
+
+    /// The feed's search field is a doorway to the Search tab rather than a live
+    /// filter, so it never starts editing here.
+    func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
+        self.feedSearchController.isActive = false
+        if let tabs = self.tabBarController as? ApolloTabBarController {
+            tabs.selectedIndex = ApolloTabBarController.Tab.search.rawValue
+        }
+        return false
+    }
+
     // MARK: - Messages
-    
+
     private func promptSignIn(reason: String) {
         let alert = UIAlertController(title: "Not Signed In", message: reason, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -369,13 +584,13 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         })
         self.present(alert, animated: true)
     }
-    
+
     private func showError(title: String, error: Error) {
         let alert = UIAlertController(title: title, message: error.localizedDescription, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         self.present(alert, animated: true)
     }
-    
+
     private func showMessage(title: String?, message: String, buttonTitle: String?, action: (() -> Void)?) {
         self.hideMessage()
         let messageView = FeedMessageView(title: title, message: message, buttonTitle: buttonTitle, action: action)
@@ -388,7 +603,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         ])
         self.messageView = messageView
     }
-    
+
     private func hideMessage() {
         self.messageView?.removeFromSuperview()
         self.messageView = nil
@@ -397,18 +612,18 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
 // FeedMessageView - centered status text for loading, empty and error states
 class FeedMessageView: UIView {
-    
+
     private let action: (() -> Void)?
-    
+
     init(title: String?, message: String, buttonTitle: String?, action: (() -> Void)?) {
         self.action = action
         super.init(frame: .zero)
-        
+
         let stackView = UIStackView()
         stackView.axis = .vertical
         stackView.alignment = .center
         stackView.spacing = 8
-        
+
         if let title = title {
             let titleLabel = UILabel()
             titleLabel.text = title
@@ -417,7 +632,7 @@ class FeedMessageView: UIView {
             titleLabel.numberOfLines = 0
             stackView.addArrangedSubview(titleLabel)
         }
-        
+
         let messageLabel = UILabel()
         messageLabel.text = message
         messageLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
@@ -425,7 +640,7 @@ class FeedMessageView: UIView {
         messageLabel.textAlignment = .center
         messageLabel.numberOfLines = 0
         stackView.addArrangedSubview(messageLabel)
-        
+
         if let buttonTitle = buttonTitle {
             var configuration = UIButton.Configuration.filled()
             configuration.title = buttonTitle
@@ -436,7 +651,7 @@ class FeedMessageView: UIView {
             stackView.setCustomSpacing(20, after: messageLabel)
             stackView.addArrangedSubview(button)
         }
-        
+
         self.addSubview(stackView)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -446,11 +661,11 @@ class FeedMessageView: UIView {
             stackView.trailingAnchor.constraint(equalTo: self.trailingAnchor)
         ])
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     @objc private func buttonTapped() {
         self.action?()
     }

@@ -48,6 +48,7 @@ typedef NS_ENUM(NSInteger, RDKCommentSortingMethod) {
     RDKCommentSortingMethodControversial = 5,
     RDKCommentSortingMethodOld = 6,
     RDKCommentSortingMethodRandom = 7,
+    RDKCommentSortingMethodLive = 8,
 };
 
 FOUNDATION_EXPORT NSString *_Nullable RDKStringFromSubredditCategory(RDKSubredditCategory category);

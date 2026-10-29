@@ -84,6 +84,10 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 
 // The signed-in account (/api/v1/me) as its JSON dictionary
 - (nullable NSURLSessionDataTask *)currentUserWithCompletion:(RDKObjectCompletionBlock)completion;
+/// Bulk lookup of users' profile icons (api/user_data_by_account_ids.json).
+/// `fullNames` are the t2_… account ids; the block gets account id -> icon URL.
+- (nullable NSURLSessionDataTask *)userIconsForAccountFullNames:(NSArray<NSString *> *)fullNames
+    completion:(void (^)(NSDictionary<NSString *, NSString *> * _Nullable icons, NSError * _Nullable error))completion;
 
 // MARK: Listings
 

@@ -45,6 +45,7 @@ NSString *RDKStringFromCommentSortingMethod(RDKCommentSortingMethod method) {
         case RDKCommentSortingMethodControversial: return @"controversial";
         case RDKCommentSortingMethodOld: return @"old";
         case RDKCommentSortingMethodRandom: return @"random";
+        case RDKCommentSortingMethodLive: return @"live";
         default: return nil;
     }
 }

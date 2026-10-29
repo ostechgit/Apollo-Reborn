@@ -11,6 +11,7 @@
         @"body": @"data.body",
         @"bodyHTML": @"data.body_html",
         @"author": @"data.author",
+        @"authorFullName": @"data.author_fullname",
         @"authorFlairPlaintext": @"data.author_flair_text",
         @"linkID": @"data.link_id",
         @"linkTitle": @"data.link_title",
@@ -19,6 +20,7 @@
         @"distinguished": @"data.distinguished",
         @"collapsedReasonCode": @"data.collapsed_reason_code",
         @"edited": @"data.edited",
+        @"mediaMetadata": @"data.media_metadata",
         @"isSubmitter": @"data.is_submitter",
         @"scoreHidden": @"data.score_hidden",
         @"stickied": @"data.stickied",
@@ -39,6 +41,14 @@
             return [NSDate dateWithTimeIntervalSince1970:[value doubleValue]];
         }
         return nil;
+    }];
+}
+
++ (NSValueTransformer *)mediaMetadataJSONTransformer {
+    // data.media_metadata is a plain dictionary keyed by media id; hand it
+    // through untouched.
+    return [MTLValueTransformer transformerUsingForwardBlock:^id(id value, BOOL *success, NSError **error) {
+        return [value isKindOfClass:[NSDictionary class]] ? value : nil;
     }];
 }
 

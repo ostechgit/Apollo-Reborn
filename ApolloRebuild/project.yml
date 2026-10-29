@@ -33,6 +33,12 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      # Apollo's own compiled asset catalog (Assets.car), extracted from the
+      # original app bundle by scripts/extract-assets.sh. Added as a plain
+      # resource so it is copied verbatim into the app: it is already compiled,
+      # and actool cannot re-compile a prebuilt .car. Gitignored (39 MB).
+      - path: Resources
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Apollo

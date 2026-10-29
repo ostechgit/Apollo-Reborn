@@ -1,4 +1,8 @@
 Pods/
+# Extracted from the base IPA by scripts/extract-assets.sh (39 MB prebuilt catalog).
+Resources/*.car
+# Local archive/build scratch (run-in-sim.sh)
+.build/
 *.xcodeproj/
 *.xcworkspace/
 build/

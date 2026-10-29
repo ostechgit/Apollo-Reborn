@@ -9,6 +9,7 @@
     return [[super JSONKeyPathsByPropertyKey] mtl_dictionaryByAddingEntriesFromDictionary:@{
         @"title": @"data.title",
         @"author": @"data.author",
+        @"authorFullName": @"data.author_fullname",
         @"subreddit": @"data.subreddit",
         @"subredditFullName": @"data.subreddit_id",
         @"domain": @"data.domain",
@@ -17,6 +18,7 @@
         @"selfText": @"data.selftext",
         @"selfTextHTML": @"data.selftext_html",
         @"linkFlairText": @"data.link_flair_text",
+        @"linkFlairRichtext": @"data.link_flair_richtext",
         @"authorFlairPlaintext": @"data.author_flair_text",
         @"distinguished": @"data.distinguished",
         @"suggestedSort": @"data.suggested_sort",
@@ -39,6 +41,7 @@
         @"gilded": @"data.gilded",
         @"upvoteRatio": @"data.upvote_ratio",
         @"thumbnailURL": @"data.thumbnail",
+        @"crosspostParent": @"data.crosspost_parent_list",
         @"previewImages": @"data.preview.images",
         @"redditVideoURL": @"data.media.reddit_video.fallback_url",
         @"galleryItemCount": @"data.gallery_data.items",
@@ -55,6 +58,15 @@
             return [NSDate dateWithTimeIntervalSince1970:[value doubleValue]];
         }
         return nil;
+    }];
+}
+
++ (NSValueTransformer *)crosspostParentJSONTransformer {
+    // data.crosspost_parent_list is an array holding the parent post's own data
+    // object (not wrapped in kind/data like a listing child).
+    return [MTLValueTransformer transformerUsingForwardBlock:^id(NSArray *parents, BOOL *success, NSError **error) {
+        NSDictionary *parent = [parents isKindOfClass:[NSArray class]] ? parents.firstObject : nil;
+        return [parent isKindOfClass:[NSDictionary class]] ? [[RDKLink alloc] initWithDictionary:parent] : nil;
     }];
 }
 

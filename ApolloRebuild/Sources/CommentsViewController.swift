@@ -1,46 +1,66 @@
 import UIKit
 import AsyncDisplayKit
 
-// CommentsViewController - a post and its comment thread
-// Reconstructed from apollo-base 1.15.11 binary analysis.
+// CommentsViewController - a post and its comment thread.
+// Reconstructed from apollo-base 1.15.11 binary analysis
+// (Apollo.CommentsViewController) and measured off 3x screenshots of the
+// original.
 //
-// Minimal for now: the post as a header, the tree flattened with indentation,
-// and "more replies" rows that expand in place. The original adds collapsing,
-// comment actions, sorting, the quick bar, search and media in comments.
+// The original is a ListAdapter-driven table: one header section (the post,
+// drawn by CommentsHeaderCellNode) and then one section per comment, each
+// followed by its replies in depth-first order. Everything below is a
+// flattened version of that shape.
+//
+// Still to come: collapsing a subtree (tap a comment), finding text in the
+// comments, the 3D-touch preview, live sort updates, and the "view parent
+// comments" row when the thread was entered from a single comment.
 
 class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelegate {
-    
+
     // A row in the flattened thread
     enum Row {
         case comment(RDKComment, depth: Int)
         case more(RDKMoreComments, depth: Int)
     }
-    
+
     let tableNode = ASTableNode(style: .plain)
     private(set) var link: RDKLink
+    /// The whole thread, depth-first, as loaded. `rows` is what the table shows:
+    /// the same list minus the subtrees hidden behind collapsed comments.
+    private var tree: [Row] = []
     private var rows: [Row] = []
     private var commentSort: RDKCommentSortingMethod = .default
-    private var expandingMore = Set<String>()
-    private let messageLabel = UILabel()
-    
+    private var expandingMore: Set<String> = []
+    /// fullname of every comment the reader has collapsed by tapping it.
+    private var collapsedComments: Set<String> = []
+    /// Replies hidden behind each collapsed comment, drawn in its badge.
+    private var hiddenReplyCounts: [String: Int] = [:]
+    /// Kept so the sort button can draw the selected sort's own glyph, which is
+    /// what the original does (its glyph is `option-sort-<sort>`).
+    private var sortItem: UIBarButtonItem?
+
+    /// Apollo's floating "jump to the next comment" button, bottom right.
+    private let jumpButton = UIButton(type: .custom)
+    private var jumpTarget = 0
     init(link: RDKLink) {
         self.link = link
         super.init(nibName: nil, bundle: nil)
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        self.title = PostFormatting.abbreviatedCount(self.link.totalComments) + " Comments"
-        self.view.backgroundColor = .systemBackground
-        
+
+        self.view.backgroundColor = .systemGroupedBackground
+
         self.tableNode.dataSource = self
         self.tableNode.delegate = self
-        self.tableNode.backgroundColor = .systemBackground
+        // The comments themselves are white cards on the grouped background the
+        // original shows above the first comment.
+        self.tableNode.backgroundColor = .systemGroupedBackground
         self.view.addSubnode(self.tableNode)
         let tableView = self.tableNode.view
         tableView.separatorStyle = .none
@@ -51,54 +71,411 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             tableView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
         ])
-        
-        self.messageLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
-        self.messageLabel.textColor = .secondaryLabel
-        self.messageLabel.textAlignment = .center
-        self.messageLabel.numberOfLines = 0
-        self.messageLabel.text = "Loading comments\u{2026}"
-        
+
+        self.configureNavigationBar()
+        self.configureJumpButton()
         self.loadComments()
     }
-    
+
+    // MARK: - Navigation bar
+
+    /// The comments screen's title is a plain "N Comments" pill: unlike the feed
+    /// title it opens nothing, so it has no chevron and no menu.
+    private func configureNavigationBar() {
+        let titleButton = DualLabelTitleButton()
+        titleButton.showsChevron = false
+        titleButton.showsMenuAsPrimaryAction = false
+        titleButton.menu = nil
+        titleButton.primaryTitle = PostFormatting.abbreviatedCount(self.link.totalComments) + " Comments"
+        titleButton.accessibilityLabel = "Comments"
+        self.navigationItem.title = nil
+        self.navigationItem.titleView = self.pill(around: titleButton)
+
+        // The original's sort button draws the lines with an up arrow
+        // ("option-sort-top"), not the speech-bubble glyph.
+        let sort = UIBarButtonItem(image: ApolloAssets.image(named: CommentsViewController.sortGlyph(self.commentSort)),
+                                   menu: self.sortMenu())
+        sort.accessibilityLabel = "Sort Comments"
+        self.sortItem = sort
+
+        let more = UIBarButtonItem(image: ApolloAssets.image(named: "option-more"),
+                                   menu: self.commentsMenu())
+        more.accessibilityLabel = "Comment Options"
+
+        self.navigationItem.rightBarButtonItems = [more, sort]
+    }
+
+    /// Wraps a control in the glass capsule iOS 26 draws around nav-bar items.
+    private func pill(around control: UIView) -> UIView {
+        let size = control.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        control.frame = CGRect(origin: .zero, size: size)
+        guard #available(iOS 26.0, *) else { return control }
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = false
+        let capsule = UIVisualEffectView(effect: effect)
+        capsule.frame = CGRect(origin: .zero, size: size)
+        capsule.layer.cornerRadius = size.height / 2
+        capsule.clipsToBounds = true
+        capsule.contentView.addSubview(control)
+        capsule.widthAnchor.constraint(equalToConstant: size.width).isActive = true
+        capsule.heightAnchor.constraint(equalToConstant: size.height).isActive = true
+        return capsule
+    }
+
+    // MARK: - Menus
+
+    /// "Sort by…": Top, Best, New, Controversial, Old, Q&A, Random, Live Update,
+    /// each with Apollo's own glyph, in the order the original lists them.
+    private static func sortGlyph(_ sort: RDKCommentSortingMethod) -> String {
+        switch sort {
+        case .top: return "option-sort-top"
+        case .best: return "option-sort-best"
+        case .new: return "option-sort-new"
+        case .controversial: return "option-sort-controversial"
+        case .old: return "option-sort-old"
+        case .QA: return "option-sort-qa"
+        case .random: return "option-sort-random"
+        case .live: return "option-sort-live"
+        default: return "option-sort-top"
+        }
+    }
+
+    private func sortMenu() -> UIMenu {
+        let options: [(String, RDKCommentSortingMethod, String)] = [
+            ("Top", .top, "option-sort-top"),
+            ("Best", .best, "option-sort-best"),
+            ("New", .new, "option-sort-new"),
+            ("Controversial", .controversial, "option-sort-controversial"),
+            ("Old", .old, "option-sort-old"),
+            ("Q&A", .QA, "option-sort-qa"),
+            ("Random", .random, "option-sort-random"),
+            ("Live Update", .live, "option-sort-live"),
+        ]
+        let actions = options.map { title, method, icon in
+            UIAction(title: title, image: ApolloAssets.image(named: icon)) { [weak self] _ in
+                guard let self = self else { return }
+                self.commentSort = method
+                // The button draws the chosen sort's glyph from now on.
+                self.sortItem?.image = ApolloAssets.image(named: CommentsViewController.sortGlyph(method))
+                self.collapsedComments.removeAll()
+                // Live Update is a Reddit-side comment stream; until that's
+                // wired up it loads the thread the same way the others do.
+                self.apply([])
+                self.loadComments()
+            }
+        }
+        return UIMenu(title: "Sort by\u{2026}", children: actions)
+    }
+
+    /// The Post-detail ⋯ menu: the rows the original's comments nav bar shows,
+    /// in its order — upvote, downvote, save, reply, author, subreddit,
+    /// collapse child comments, select text, share, share as image, crosspost,
+    /// find in comments, give award, report, live activity, remind me.
+    private func commentsMenu() -> UIMenu {
+        let author = self.link.author ?? ""
+        let subreddit = self.link.subreddit ?? ""
+        var children: [UIMenuElement] = []
+
+        children.append(UIAction(title: "Upvote", image: ApolloAssets.image(named: "option-upvote")) { [weak self] _ in
+            self?.vote(.up)
+        })
+        children.append(UIAction(title: "Downvote", image: ApolloAssets.image(named: "option-downvote")) { [weak self] _ in
+            self?.vote(.down)
+        })
+        children.append(UIAction(title: self.link.saved ? "Unsave" : "Save",
+                                 image: ApolloAssets.image(named: self.link.saved ? "option-unsave" : "option-save")) { [weak self] _ in
+            self?.toggleSave()
+        })
+        children.append(UIAction(title: "Reply", image: ApolloAssets.image(named: "option-reply")) { [weak self] _ in
+            self?.replyToPost()
+        })
+        if !author.isEmpty {
+            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { _ in
+                // The Author screen isn't built yet.
+            })
+        }
+        if !subreddit.isEmpty {
+            children.append(UIAction(title: subreddit, image: ApolloAssets.image(named: "option-subreddit")) { _ in
+                // The subreddit feed is reached from the subreddit list.
+            })
+        }
+        children.append(UIAction(title: "Collapse Child Comments",
+                                 image: ApolloAssets.image(named: "option-collapse-child-comments")) { [weak self] _ in
+            self?.collapseAllTopLevelComments()
+        })
+        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { _ in })
+        children.append(UIAction(title: "Share", image: ApolloAssets.image(named: "option-share")) { [weak self] _ in
+            self?.share()
+        })
+        children.append(UIAction(title: "Share as Image\u{2026}",
+                                 image: ApolloAssets.image(named: "option-share-as-image")) { _ in })
+        children.append(UIAction(title: "Crosspost", image: ApolloAssets.image(named: "option-crosspost")) { _ in })
+        children.append(UIAction(title: "Find in Comments", image: ApolloAssets.image(named: "option-search")) { [weak self] _ in
+            self?.presentFindInComments()
+        })
+        children.append(UIAction(title: "Give Award", image: ApolloAssets.image(named: "option-gift-award")) { _ in })
+        children.append(UIAction(title: "Report", image: ApolloAssets.image(named: "option-report")) { _ in })
+        children.append(UIAction(title: "Live Activity", image: ApolloAssets.image(named: "option-live-activity")) { _ in })
+        children.append(UIAction(title: "Remind Me In\u{2026}",
+                                 image: ApolloAssets.image(named: "option-remind-me-in")) { _ in })
+
+        return UIMenu(children: children)
+    }
+
+    /// "Collapse Child Comments": collapses every top-level thread at once.
+    private func collapseAllTopLevelComments() {
+        for row in self.tree {
+            if case .comment(let comment, let depth) = row, depth == 0, let name = comment.fullName {
+                self.collapsedComments.insert(name)
+            }
+        }
+        self.reloadVisibleRows()
+    }
+
+    // MARK: - Actions
+
+    private func vote(_ direction: RDKVoteDirection) {
+        guard AccountManager.shared.isLogged else { return }
+        let previousStatus = self.link.voteStatus
+        let previousScore = self.link.score
+        func value(_ status: RDKVoteStatus) -> Int {
+            switch status {
+            case .upvoted: return 1
+            case .downvoted: return -1
+            default: return 0
+            }
+        }
+        // Tapping the vote you already cast undoes it, as the original's quick
+        // bar does.
+        let newStatus: RDKVoteStatus = direction == .up
+            ? (previousStatus == .upvoted ? .none : .upvoted)
+            : (previousStatus == .downvoted ? .none : .downvoted)
+        let request: RDKVoteDirection = newStatus == .none ? .none : direction
+        self.link.voteStatus = newStatus
+        self.link.score = previousScore + value(newStatus) - value(previousStatus)
+        self.reloadHeader()
+
+        RDKClient.shared().voteOnThing(withFullName: self.link.fullName ?? "", direction: request) { [weak self] error in
+            guard let self = self, let error = error as NSError? else { return }
+            self.link.voteStatus = previousStatus
+            self.link.score = previousScore
+            self.reloadHeader()
+            LogBuddy.error("CommentsViewController: vote failed (\(error.code))")
+        }
+    }
+
+    private func toggleSave() {
+        guard AccountManager.shared.isLogged else { return }
+        let wasSaved = self.link.saved
+        self.link.saved = !wasSaved
+        self.reloadHeader()
+        let completion: RDKCompletionBlock = { [weak self] error in
+            guard let self = self, let error = error as NSError? else { return }
+            self.link.saved = wasSaved
+            self.reloadHeader()
+            LogBuddy.error("CommentsViewController: save failed (\(error.code))")
+        }
+        if wasSaved {
+            RDKClient.shared().unsaveThing(withFullName: self.link.fullName ?? "", completion: completion)
+        } else {
+            RDKClient.shared().saveThing(withFullName: self.link.fullName ?? "", completion: completion)
+        }
+    }
+
+    private func replyToPost() {
+        let composer = ComposeViewController(isPost: false)
+        let navigation = UINavigationController(rootViewController: composer)
+        self.present(navigation, animated: true)
+    }
+
+    private func share() {
+        guard let permalink = self.link.permalink, let url = URL(string: "https://www.reddit.com" + permalink) else { return }
+        let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        self.present(activity, animated: true)
+    }
+
+    /// Voting or saving redraws the header's info row and quick bar: the cell
+    /// is rebuilt from the same link, so its buttons pick up the new state.
+    private func reloadHeader() {
+        self.tableNode.reloadRows(at: [IndexPath(row: 0, section: 0)], with: .none)
+    }
+
+    // MARK: - Jump button
+
+    /// The floating blue disc bottom-right: one tap scrolls to the next
+    /// top-level comment.
+    private func configureJumpButton() {
+        self.jumpButton.backgroundColor = ThemeManager.shared.accentColor()
+        self.jumpButton.layer.cornerRadius = 23
+        self.jumpButton.clipsToBounds = true
+        self.jumpButton.setImage(ApolloAssets.image(named: "comment-jump-button-arrow")?
+            .withTintColor(.white, renderingMode: .alwaysOriginal), for: .normal)
+        self.jumpButton.translatesAutoresizingMaskIntoConstraints = false
+        self.jumpButton.addTarget(self, action: #selector(jumpTapped), for: .touchUpInside)
+        self.view.addSubview(self.jumpButton)
+        let bottom = self.jumpButton.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
+        NSLayoutConstraint.activate([
+            self.jumpButton.widthAnchor.constraint(equalToConstant: 46),
+            self.jumpButton.heightAnchor.constraint(equalToConstant: 46),
+            self.jumpButton.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -16),
+            bottom
+        ])
+    }
+
+    @objc private func jumpTapped() {
+        let topLevel = self.rows.enumerated().compactMap { index, row -> Int? in
+            if case .comment(_, let depth) = row, depth == 0 { return index }
+            return nil
+        }
+        guard !topLevel.isEmpty else { return }
+        let visible = self.tableNode.view.indexPathsForVisibleRows?.compactMap { $0.section == 1 ? $0.row : nil }.sorted() ?? []
+        let currentTop = visible.first ?? 0
+        let next = topLevel.first(where: { $0 > currentTop + 1 }) ?? topLevel.first!
+        self.jumpTarget = next
+        self.tableNode.scrollToRow(at: IndexPath(row: next, section: 1), at: .top, animated: true)
+    }
+
+    // MARK: - Loading
+
     private func loadComments() {
-        RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "", commentSort: self.commentSort, pagination: nil) { [weak self] link, comments, error in
+        LogBuddy.debug("Comments: load \(self.link.identifier ?? "nil") sort=\(self.commentSort.rawValue)")
+        RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
+                                           commentSort: self.commentSort,
+                                           pagination: nil) { [weak self] link, comments, error in
             guard let self = self else { return }
             if let error = error {
                 LogBuddy.error("CommentsViewController: thread failed (\((error as NSError).code))")
-                self.messageLabel.text = "Couldn\u{2019}t load comments.\n\(error.localizedDescription)"
-                self.tableNode.reloadSections(IndexSet(integer: 1), with: .none)
+                self.rows = []
+                self.tableNode.reloadData()
                 return
             }
             if let link = link {
                 // Fresher score/vote state than the feed's copy
                 self.link = link
             }
-            self.rows = CommentsViewController.flatten(comments ?? [], depth: 0)
-            self.messageLabel.text = self.rows.isEmpty ? "No comments yet." : nil
+            let rows = CommentsViewController.flatten(comments ?? [], depth: 0)
+            self.apply(rows)
+        }
+    }
+
+    /// Applies a freshly flattened thread to the table. The reload runs on the
+    /// main queue because Texture only commits a change set from the main
+    /// thread, and the network completion may land on another queue.
+    private func apply(_ rows: [Row]) {
+        DispatchQueue.main.async {
+            self.tree = rows
+            self.rebuildRows()
+            self.tableNode.reloadData()
+            LogBuddy.debug("Comments: reloaded \(self.rows.count) of \(rows.count) rows")
+        }
+    }
+
+    /// Recomputes the visible rows from the thread and the collapsed set. A
+    /// collapsed comment hides its body and every reply below it, and records
+    /// how many replies that was for its badge.
+    private func rebuildRows() {
+        var visible: [Row] = []
+        var counts: [String: Int] = [:]
+        var index = 0
+        while index < self.tree.count {
+            let row = self.tree[index]
+            visible.append(row)
+            guard case .comment(let comment, let depth) = row,
+                  let name = comment.fullName,
+                  self.collapsedComments.contains(name) else {
+                index += 1
+                continue
+            }
+            var scan = index + 1
+            var hidden = 0
+            while scan < self.tree.count, self.depth(of: self.tree[scan]) > depth {
+                if case .comment = self.tree[scan] { hidden += 1 }
+                scan += 1
+            }
+            counts[name] = hidden
+            index = scan
+        }
+        self.rows = visible
+        self.hiddenReplyCounts = counts
+    }
+
+    private func depth(of row: Row) -> Int {
+        switch row {
+        case .comment(_, let depth): return depth
+        case .more(_, let depth): return depth
+        }
+    }
+
+    /// Redraws after a collapse/expand.
+    private func reloadVisibleRows() {
+        DispatchQueue.main.async {
+            self.rebuildRows()
             self.tableNode.reloadData()
         }
     }
-    
-    static func flatten(_ things: [RDKThing], depth: Int) -> [Row] {
+
+    // MARK: - Collapsing
+
+    /// A tap on a comment collapses or expands its subtree, which is what the
+    /// original does (its collapsed row swaps the body for a count badge and a
+    /// disclosure chevron).
+    private func toggleCollapse(_ comment: RDKComment) {
+        guard let name = comment.fullName else { return }
+        if self.collapsedComments.contains(name) {
+            self.collapsedComments.remove(name)
+        } else {
+            self.collapsedComments.insert(name)
+        }
+        self.reloadVisibleRows()
+    }
+
+    /// fullname -> the fullname of the comment it replies to, so a comment's
+    /// ancestors can be found for "Collapse to Top".
+    private var parentMap: [String: String] {
+        var map: [String: String] = [:]
+        for row in self.tree {
+            if case .comment(let comment, _) = row,
+               let name = comment.fullName, let parent = comment.parentID, parent.hasPrefix("t1_") {
+                map[name] = parent
+            }
+        }
+        return map
+    }
+
+    /// "Collapse to Top": collapse every ancestor so this comment's thread
+    /// folds up into a single row.
+    private func collapseToTop(_ comment: RDKComment) {
+        let parents = self.parentMap
+        var current = comment.parentID
+        while let parent = current, parent.hasPrefix("t1_") {
+            self.collapsedComments.insert(parent)
+            current = parents[parent]
+        }
+        self.reloadVisibleRows()
+    }
+
+    /// `moreDepth` is the depth of the comment whose replies these are. The
+    /// original draws a "N more replies" row at that comment's own depth (bar
+    /// and text align with the comment above it), not at its replies' depth.
+    static func flatten(_ things: [RDKThing], depth: Int, moreDepth: Int? = nil) -> [Row] {
         var rows: [Row] = []
         for thing in things {
             if let comment = thing as? RDKComment {
                 rows.append(.comment(comment, depth: depth))
-                rows.append(contentsOf: flatten(comment.replies ?? [], depth: depth + 1))
+                rows.append(contentsOf: flatten(comment.replies ?? [], depth: depth + 1, moreDepth: depth))
             } else if let more = thing as? RDKMoreComments {
-                rows.append(.more(more, depth: depth))
+                rows.append(.more(more, depth: max(0, moreDepth ?? depth)))
             }
         }
         return rows
     }
-    
+
     // MARK: - Expanding "more replies"
-    
+
     private func expand(_ more: RDKMoreComments, at row: Int) {
         guard !more.isContinueThread, let key = more.fullName, !self.expandingMore.contains(key) else { return }
         self.expandingMore.insert(key)
-        
+
         RDKClient.shared().moreComments(more, for: self.link, sort: self.commentSort) { [weak self] collection, error in
             guard let self = self else { return }
             self.expandingMore.remove(key)
@@ -118,150 +495,170 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 return nil
             }
             self.rows.replaceSubrange(index...index, with: newRows)
+            if let treeIndex = self.tree.firstIndex(where: { if case .more(let other, _) = $0 { return other === more } else { return false } }) {
+                self.tree.replaceSubrange(treeIndex...treeIndex, with: newRows)
+            }
             self.tableNode.performBatchUpdates({
                 self.tableNode.deleteRows(at: [IndexPath(row: index, section: 1)], with: .fade)
                 self.tableNode.insertRows(at: (index..<(index + newRows.count)).map { IndexPath(row: $0, section: 1) }, with: .fade)
             }, completion: nil)
         }
     }
-    
+
     // MARK: - ASTableDataSource / ASTableDelegate
-    
+
     func numberOfSections(in tableNode: ASTableNode) -> Int {
         return 2
     }
-    
+
     func tableNode(_ tableNode: ASTableNode, numberOfRowsInSection section: Int) -> Int {
-        if section == 0 {
-            return 1
-        }
-        return self.rows.isEmpty ? 1 : self.rows.count
+        let count = section == 0 ? 1 : self.rows.count
+        return count
     }
-    
+
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         if indexPath.section == 0 {
             let link = self.link
-            return { LargePostCellNode(link: link, isInsideComments: true) }
+            return { [weak self] in
+                let cell = LargePostCellNode(link: link, isInsideComments: true)
+                cell.onReplyTapped = { [weak self] in self?.replyToPost() }
+                cell.onShareTapped = { [weak self] in self?.share() }
+                return cell
+            }
         }
-        guard !self.rows.isEmpty else {
-            let text = self.messageLabel.text ?? ""
-            return { StatusMessageCellNode(text: text) }
-        }
-        let linkAuthor = self.link.author ?? ""
+        let postAuthor = self.link.author
         switch self.rows[indexPath.row] {
         case .comment(let comment, let depth):
-            return { CommentCellNode(comment: comment, depth: depth, linkAuthor: linkAuthor) }
+            let collapsed = comment.fullName.map { self.collapsedComments.contains($0) } ?? false
+            let hidden = comment.fullName.flatMap { self.hiddenReplyCounts[$0] } ?? 0
+            let menu = self.commentMenu(for: comment)
+            return {
+                let cell = CommentCellNode(comment: comment, depth: depth, postAuthor: postAuthor,
+                                           isCollapsed: collapsed, hiddenReplyCount: hidden)
+                cell.menu = menu
+                return cell
+            }
         case .more(let more, let depth):
             return { MoreCommentsCellNode(more: more, depth: depth) }
         }
     }
-    
+
+    /// A comment's ⋯ menu: the rows the original's Comment sheet shows, in its
+    /// order — upvote, downvote, save, reply, author, select text, share, share
+    /// as image, collapse to top, give award, report, remind me.
+    private func commentMenu(for comment: RDKComment) -> UIMenu {
+        var children: [UIMenuElement] = []
+
+        children.append(UIAction(title: "Upvote", image: ApolloAssets.image(named: "option-upvote")) { [weak self] _ in
+            self?.vote(comment, .up)
+        })
+        children.append(UIAction(title: "Downvote", image: ApolloAssets.image(named: "option-downvote")) { [weak self] _ in
+            self?.vote(comment, .down)
+        })
+        children.append(UIAction(title: comment.saved ? "Unsave" : "Save",
+                                 image: ApolloAssets.image(named: comment.saved ? "option-unsave" : "option-save")) { [weak self] _ in
+            self?.toggleSave(comment)
+        })
+        children.append(UIAction(title: "Reply", image: ApolloAssets.image(named: "option-reply")) { [weak self] _ in
+            self?.replyToComment(comment)
+        })
+        if let author = comment.author, !author.isEmpty {
+            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { _ in
+                // The Author screen isn't built yet.
+            })
+        }
+        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { _ in })
+        children.append(UIAction(title: "Share", image: ApolloAssets.image(named: "option-share")) { [weak self] _ in
+            self?.share(comment)
+        })
+        children.append(UIAction(title: "Share as Image\u{2026}",
+                                 image: ApolloAssets.image(named: "option-share-as-image")) { _ in })
+        children.append(UIAction(title: "Collapse to Top",
+                                 image: ApolloAssets.image(named: "option-collapse-to-top")) { [weak self] _ in
+            self?.collapseToTop(comment)
+        })
+        children.append(UIAction(title: "Give Award", image: ApolloAssets.image(named: "option-gift-award")) { _ in })
+        children.append(UIAction(title: "Report", image: ApolloAssets.image(named: "option-report")) { _ in })
+        children.append(UIAction(title: "Remind Me In\u{2026}",
+                                 image: ApolloAssets.image(named: "option-remind-me-in")) { _ in })
+
+        return UIMenu(children: children)
+    }
+
+    /// "Find in Comments": the original adds a search field and jumps between
+    /// matches. Not built yet.
+    private func presentFindInComments() {
+    }
+
+    // MARK: - Comment actions
+
+    private func vote(_ comment: RDKComment, _ direction: RDKVoteDirection) {
+        guard AccountManager.shared.isLogged else { return }
+        let previousStatus = comment.voteStatus
+        let previousScore = comment.score
+        func value(_ status: RDKVoteStatus) -> Int {
+            switch status {
+            case .upvoted: return 1
+            case .downvoted: return -1
+            default: return 0
+            }
+        }
+        let newStatus: RDKVoteStatus = direction == .up
+            ? (previousStatus == .upvoted ? .none : .upvoted)
+            : (previousStatus == .downvoted ? .none : .downvoted)
+        let request: RDKVoteDirection = newStatus == .none ? .none : direction
+        comment.voteStatus = newStatus
+        comment.score = previousScore + value(newStatus) - value(previousStatus)
+        self.tableNode.reloadData()
+
+        RDKClient.shared().voteOnThing(withFullName: comment.fullName ?? "", direction: request) { [weak self] error in
+            guard let self = self, let error = error as NSError? else { return }
+            comment.voteStatus = previousStatus
+            comment.score = previousScore
+            self.tableNode.reloadData()
+            LogBuddy.error("CommentsViewController: comment vote failed (\(error.code))")
+        }
+    }
+
+    private func toggleSave(_ comment: RDKComment) {
+        guard AccountManager.shared.isLogged else { return }
+        let wasSaved = comment.saved
+        comment.saved = !wasSaved
+        self.tableNode.reloadData()
+        let completion: RDKCompletionBlock = { [weak self] error in
+            guard let self = self, let error = error as NSError? else { return }
+            comment.saved = wasSaved
+            self.tableNode.reloadData()
+            LogBuddy.error("CommentsViewController: comment save failed (\(error.code))")
+        }
+        if wasSaved {
+            RDKClient.shared().unsaveThing(withFullName: comment.fullName ?? "", completion: completion)
+        } else {
+            RDKClient.shared().saveThing(withFullName: comment.fullName ?? "", completion: completion)
+        }
+    }
+
+    private func replyToComment(_ comment: RDKComment) {
+        let composer = ComposeViewController(isPost: false)
+        let navigation = UINavigationController(rootViewController: composer)
+        self.present(navigation, animated: true)
+    }
+
+    private func share(_ comment: RDKComment) {
+        let base = "https://www.reddit.com" + (self.link.permalink ?? "")
+        guard let url = URL(string: base + (comment.identifier ?? "")) else { return }
+        let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        self.present(activity, animated: true)
+    }
+
     func tableNode(_ tableNode: ASTableNode, didSelectRowAt indexPath: IndexPath) {
         tableNode.deselectRow(at: indexPath, animated: true)
-        guard indexPath.section == 1, indexPath.row < self.rows.count, case .more(let more, _) = self.rows[indexPath.row] else { return }
-        self.expand(more, at: indexPath.row)
-    }
-}
-
-// CommentCellNode - one comment, indented by depth with a colored thread line
-class CommentCellNode: ASCellNode {
-    
-    let comment: RDKComment
-    let depth: Int
-    private let headerNode = ASTextNode()
-    private let bodyNode = ASTextNode()
-    private let threadLineNode = ASDisplayNode()
-    private let separatorNode = ASDisplayNode()
-    
-    static let threadColors: [UIColor] = [.systemBlue, .systemGreen, .systemOrange, .systemPurple, .systemPink, .systemTeal]
-    
-    init(comment: RDKComment, depth: Int? = nil, linkAuthor: String? = nil) {
-        self.comment = comment
-        self.depth = depth ?? comment.depth
-        super.init()
-        self.automaticallyManagesSubnodes = true
-        self.selectionStyle = .none
-        
-        let author = comment.author ?? "[deleted]"
-        let isOP = comment.isSubmitter || (linkAuthor != nil && author == linkAuthor)
-        let authorColor: UIColor = comment.distinguished == "moderator" ? .systemGreen : (isOP ? .systemBlue : .label)
-        let header = NSMutableAttributedString(string: author, attributes: [
-            .font: UIFont.preferredFont(forTextStyle: .footnote).bold(),
-            .foregroundColor: authorColor
-        ])
-        var details: [String] = []
-        if isOP { details.append("OP") }
-        details.append(comment.scoreHidden ? "\u{2013}" : PostFormatting.abbreviatedCount(comment.score))
-        details.append(PostFormatting.relativeTime(since: comment.createdUTC) + (comment.edited != nil ? "*" : ""))
-        let scoreColor: UIColor = comment.upvoted ? .systemOrange : (comment.downvoted ? .systemIndigo : .secondaryLabel)
-        header.append(NSAttributedString(string: "  " + details.joined(separator: " \u{2022} "), attributes: [
-            .font: UIFont.preferredFont(forTextStyle: .footnote),
-            .foregroundColor: scoreColor
-        ]))
-        self.headerNode.attributedText = header
-        
-        self.bodyNode.attributedText = NSAttributedString(string: comment.body ?? "", attributes: [
-            .font: UIFont.preferredFont(forTextStyle: .subheadline),
-            .foregroundColor: UIColor.label
-        ])
-        
-        self.threadLineNode.backgroundColor = self.depth == 0 ? .clear : CommentCellNode.threadColors[(self.depth - 1) % CommentCellNode.threadColors.count]
-        self.threadLineNode.style.width = ASDimensionMake(2)
-        self.separatorNode.backgroundColor = .separator
-        self.separatorNode.style.height = ASDimensionMake(0.5)
-    }
-    
-    override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
-        let text = ASStackLayoutSpec(direction: .vertical, spacing: 4, justifyContent: .start, alignItems: .stretch, children: [self.headerNode, self.bodyNode])
-        text.style.flexShrink = 1
-        text.style.flexGrow = 1
-        let row = ASStackLayoutSpec(direction: .horizontal, spacing: 10, justifyContent: .start, alignItems: .stretch, children: [self.threadLineNode, text])
-        let indent = CGFloat(max(self.depth - 1, 0)) * 12
-        let inset = ASInsetLayoutSpec(insets: UIEdgeInsets(top: 10, left: 16 + indent, bottom: 10, right: 16), child: row)
-        return ASStackLayoutSpec(direction: .vertical, spacing: 0, justifyContent: .start, alignItems: .stretch, children: [inset, self.separatorNode])
-    }
-}
-
-// MoreCommentsCellNode - "N more replies" (or "Continue this thread")
-class MoreCommentsCellNode: ASCellNode {
-    
-    private let textNode = ASTextNode()
-    private let depth: Int
-    
-    init(more: RDKMoreComments, depth: Int) {
-        self.depth = depth
-        super.init()
-        self.automaticallyManagesSubnodes = true
-        let text = more.isContinueThread ? "Continue this thread on Reddit" : "\(more.count) more \(more.count == 1 ? "reply" : "replies")"
-        self.textNode.attributedText = NSAttributedString(string: text, attributes: [
-            .font: UIFont.preferredFont(forTextStyle: .footnote).bold(),
-            .foregroundColor: more.isContinueThread ? UIColor.secondaryLabel : UIColor.systemBlue
-        ])
-    }
-    
-    override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
-        let indent = CGFloat(max(self.depth, 0)) * 12
-        return ASInsetLayoutSpec(insets: UIEdgeInsets(top: 10, left: 16 + indent, bottom: 10, right: 16), child: self.textNode)
-    }
-}
-
-// StatusMessageCellNode - a single centered line of status text
-class StatusMessageCellNode: ASCellNode {
-    
-    private let textNode = ASTextNode()
-    
-    init(text: String) {
-        super.init()
-        self.automaticallyManagesSubnodes = true
-        self.selectionStyle = .none
-        self.textNode.attributedText = NSAttributedString(string: text, attributes: [
-            .font: UIFont.preferredFont(forTextStyle: .subheadline),
-            .foregroundColor: UIColor.secondaryLabel,
-            .paragraphStyle: { let style = NSMutableParagraphStyle(); style.alignment = .center; return style }()
-        ])
-    }
-    
-    override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
-        return ASInsetLayoutSpec(insets: UIEdgeInsets(top: 32, left: 24, bottom: 32, right: 24), child: self.textNode)
+        guard indexPath.section == 1, indexPath.row < self.rows.count else { return }
+        switch self.rows[indexPath.row] {
+        case .more(let more, _):
+            self.expand(more, at: indexPath.row)
+        case .comment(let comment, _):
+            self.toggleCollapse(comment)
+        }
     }
 }

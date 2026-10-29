@@ -11,7 +11,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = ApolloTabBarController()
+        if let gallery = AssetGalleryViewController.galleryIfRequested() {
+            // Development aid: shows what each Assets.car name actually draws
+            window.rootViewController = UINavigationController(rootViewController: gallery)
+        } else {
+            window.rootViewController = ApolloTabBarController()
+        }
         window.makeKeyAndVisible()
         self.window = window
         

@@ -92,7 +92,9 @@ final class RedditListViewController: UIViewController, UITableViewDataSource, U
         super.viewDidLoad()
         os_log("RedditListViewController viewDidLoad", log: apolloLog)
 
-        self.title = "Home"
+        // The original's title for this screen is "Subreddits" (the feed pushed
+        // on top of it is titled "Home"), not "Home".
+        self.title = "Subreddits"
         self.view.backgroundColor = UIColor.systemBackground
 
         let tableView = UITableView(frame: .zero, style: .plain)

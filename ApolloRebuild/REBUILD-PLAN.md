@@ -161,6 +161,76 @@ xcodebuild test -workspace ApolloRebuild.xcworkspace -scheme Apollo -destination
 python3 tests/mock_reddit_server.py --port 8765
 ```
 
+
+## 2026-10-30 — Comments screen: measured against the original
+
+Everything below was measured off 3x simulator screenshots of the original
+(`apollo-base.ipa` + Apollo-Reborn tweak) side by side with the rebuild, or read
+out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
+
+### Fixed this session
+
+- **Comments never rendered.** Not Texture: `MarkdownText.inline()` never
+  advanced when it met an unmatched `*` / `_` / `~`, and `marker()` /
+  `index(of:)` rebuilt arrays per character (O(n²)). Rewrote the scanner to be
+  allocation-free and always-advancing. Reported by a CPU sample stuck in
+  `MarkdownText.parseLink → index(of:in:from:)`.
+- **Line pitch.** `lineHeightMultiple` scales the font's leading, not its point
+  size. 15pt bodies now pitch exactly 18pt via
+  `minimumLineHeight = maximumLineHeight = fontSize * 1.2`.
+- **Body overflow.** Long URLs drew past the right edge; the text column now
+  flexes (`flexGrow/flexShrink`) and the row is as wide as `constrainedSize`.
+- **Cell padding.** 8.5pt top/bottom (measured: a 2-line reply's row is 91pt =
+  8.5 + 30 header + 8 gap + 36 body + 8.5).
+- **Thread line.** 2pt bar at `12*depth`, inset 8.5pt top/bottom so it ends 9pt
+  inside each hairline (measured: an original depth-1 bar runs 278.7→351.3
+  between hairlines at 269.3 and 360.7). Colours are the rainbow theme
+  (#F24336, #FF922E, …, sampled from the original).
+- **Separators.** Hairline at the top of every row, inset `12*depth` — this
+  matches the original exactly (its full-width separators are just depth 0).
+- **Tap to collapse.** Collapsed rows hide the body, the ⋯ and the age and draw
+  a 20pt grey rounded count badge plus `disclosure-indicator-down`
+  (measured x 348.3–368.3, chevron 373.3–386.3).
+- **Both ••• menus** now use the exact rows/order from
+  `src/ApolloActionMenuLayout.m` (Post-detail and Comment contexts) and render
+  as native `UIMenu`s. `ASButtonNode` has no `UIButton` behind it, so the ⋯
+  is a real `UIButton` inside `ASDisplayNode(viewBlock:)`, configured in
+  `didLoad` (the view does not exist at `init` time).
+- **Sort glyph** now follows the *selected* sort (`option-sort-<sort>`).
+- **"N more replies" row.** Text is 15pt semibold accent blue, a blue
+  `disclosure-indicator-down` chevron 16pt from the right, its own thread line
+  at `12*depth` spanning the row, and — verified from the original — the row
+  sits at the *parent comment's* depth, not its replies' depth
+  (measured: the "13 more replies" row has its bar at 24 and text at 41.7).
+  "Continue thread" is the original's copy for a rolled-up thread.
+- **Edited comments** show the grey `comment-edited` pencil beside the score;
+  the age no longer gets an invented `*`.
+- **Inline comment media.** Bodies now split into markdown text plus media:
+  `![gif](giphy|ID)` and bare i.redd.it / preview.redd.it / i.imgur.com links
+  are drawn as pictures at the column's full width, aspect from the comment's
+  own `data.media_metadata` (`s.u`/`s.gif`, `s.x`, `s.y`), 10pt rounded corners.
+  `RDKComment.mediaMetadata` needed an explicit Mantle transformer or the
+  dictionary silently did not map. Media Reddit marks `status: invalid` (dead
+  giphy ids) is dropped instead of leaking `![gif](…)` into the body text.
+
+### Still missing on this screen (in the original, absent here)
+
+- **Find in Comments**: pulling down at the top reveals a "Find in Comments"
+  search field under the nav bar (seen in the comparator), with match stepping.
+- **Load parent comments** (`view-parent-comments` asset, string
+  "Load parent comments") for a thread opened from a single comment's permalink.
+- **Select Text** mode, Share as Image, Give Award, Report, Remind Me In…,
+  Live Activity — the menu rows exist but their actions are stubs.
+- **Swipe to vote**, long-press preview (3D touch), and tapping a comment's
+  media to open the media viewer.
+- **Header indicators**: sticky pin (`inline-sticky`), cakeday (`cakeday` +
+  days), saved triangle (`inline-saved`), locked (`inline-locked`), awards
+  (`AwardsNode`), moderator banner, flair chip styling beyond plain text.
+- **Animated media**: giphy entries Reddit marks valid are `.gif`/`.mp4`;
+  the original plays them, we draw the still.
+- **Collapsed badge count** should be checked against the original for
+  threads that mix real comments and `more` rows.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

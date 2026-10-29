@@ -65,7 +65,26 @@
     return model;
 }
 
+// DEBUG: development aid, not part of the original. Writes the first listing
+// response the app receives to Caches/apollo-listing-dump.json so the rebuild
+// can be written against Apollo's real field set instead of guesses. Only runs
+// when APOLLO_DUMP_LISTING is set in the launch environment.
+- (void)dumpRawJSON:(NSDictionary *)listing {
+    static NSInteger dumpCount = 0;
+    dumpCount += 1;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:listing ?: @{} options:NSJSONWritingPrettyPrinted error:nil];
+    // One file per listing (feed, thread, morechildren, ...) so a screen's
+    // real field set can be read off instead of guessed at.
+    NSString *name = [NSString stringWithFormat:@"apollo-listing-dump-%ld.json", (long)dumpCount];
+    NSString *path = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:name];
+    [data writeToFile:path atomically:YES];
+    NSLog(@"ApolloRebuild: dumped listing JSON to %@", path);
+}
+
 - (NSArray *)objectsFromListingResponse:(NSDictionary *)listing {
+    if (getenv("APOLLO_DUMP_LISTING")) {
+        [self dumpRawJSON:listing];
+    }
     NSArray *children = [listing isKindOfClass:[NSDictionary class]] ? [listing valueForKeyPath:@"data.children"] : nil;
     if (![children isKindOfClass:[NSArray class]]) {
         return @[];

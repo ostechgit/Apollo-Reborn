@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *body;
 @property (nonatomic, copy, nullable) NSString *bodyHTML;
 @property (nonatomic, copy, nullable) NSString *author;
+@property (nonatomic, copy, nullable) NSString *authorFullName;  // data.author_fullname (t2_…)
 @property (nonatomic, copy, nullable) NSString *authorFlairPlaintext;
 @property (nonatomic, copy, nullable) NSString *linkID;       // data.link_id, e.g. "t3_1abc2d"
 @property (nonatomic, copy, nullable) NSString *linkTitle;    // only present outside a thread (profile, inbox)
@@ -18,6 +19,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *distinguished;
 @property (nonatomic, copy, nullable) NSString *collapsedReasonCode;
 @property (nonatomic, strong, nullable) NSDate *edited;
+/// data.media_metadata: Reddit's own sizing for any image or gif embedded in
+/// the body, keyed by media id ("giphy|ID" for giphy embeds).
+@property (nonatomic, copy, nullable) NSDictionary *mediaMetadata;
 
 @property (nonatomic, assign) BOOL isSubmitter;   // data.is_submitter (OP)
 @property (nonatomic, assign) BOOL scoreHidden;

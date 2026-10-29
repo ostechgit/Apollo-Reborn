@@ -16,6 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 // Content
 @property (nonatomic, copy, nullable) NSString *title;
 @property (nonatomic, copy, nullable) NSString *author;
+@property (nonatomic, copy, nullable) NSString *authorFullName;        // data.author_fullname (t2_…)
 @property (nonatomic, copy, nullable) NSString *subreddit;
 @property (nonatomic, copy, nullable) NSString *subredditFullName;   // data.subreddit_id
 @property (nonatomic, copy, nullable) NSString *domain;
@@ -24,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *selfText;
 @property (nonatomic, copy, nullable) NSString *selfTextHTML;
 @property (nonatomic, copy, nullable) NSString *linkFlairText;
+/// The flair's rich text: an array of {"e":"text","t":…} / {"e":"emoji","u":…}
+@property (nonatomic, copy, nullable) NSArray<NSDictionary *> *linkFlairRichtext;
 @property (nonatomic, copy, nullable) NSString *authorFlairPlaintext;
 @property (nonatomic, copy, nullable) NSString *distinguished;       // "moderator", "admin" or nil
 @property (nonatomic, copy, nullable) NSString *suggestedSort;
@@ -49,6 +52,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger totalComments; // data.num_comments
 @property (nonatomic, assign) NSInteger gilded;
 @property (nonatomic, assign) double upvoteRatio;
+
+@property (nonatomic, strong, nullable) RDKLink *crosspostParent;  // data.crosspost_parent_list[0]
 
 // Media
 @property (nonatomic, copy, nullable) NSString *thumbnailURL;  // only real URLs; Reddit's "self"/"default"/"nsfw"/"spoiler" become nil
