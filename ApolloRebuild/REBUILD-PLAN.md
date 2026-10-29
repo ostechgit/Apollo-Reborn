@@ -231,6 +231,43 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
 - **Collapsed badge count** should be checked against the original for
   threads that mix real comments and `more` rows.
 
+### More-replies follow-up (2026-10-30)
+
+- Checkpoint committed as `8454836` before continuing this investigation.
+- Fixed collapse ancestry: a more row aligns visually with its parent, but its
+  `parentID` makes it part of that parent's subtree. Treating visual depth as
+  tree depth left it visible after collapsing its parent (including depth zero).
+- Morechildren completion now hops to main, edits the full `tree`, and derives
+  visible rows again. A parent collapsed during the request stays collapsed;
+  stale responses whose placeholder is no longer in the tree are ignored.
+- Flat morechildren results are grouped by `parentID` into depth-first order;
+  nested more rows use their parent's indent, matching the initial-load path.
+- `python3 tests/run_comment_tree_tests.py` compiles the controller's actual
+  helper declarations with small host-only model doubles. Covers nested/root
+  placeholders, collapse/expand, out-of-order responses, a completion after
+  collapse, and malformed cycles. Passed. RedditKit model suite: 79 checks,
+  zero failures (existing `description` property warning remains).
+- Original named decompilation `0x100492150` (MoreCommentsCellNode layout)
+  confirms layout reads the model's depth; `0x100490b64` (layout) positions an
+  activity indicator in the content area. The earlier claim that loading merely
+  swaps the right chevron for a spinner is **not established**; loading-state
+  implementation awaits investigation of the actual state setter.
+- Installed checkpoint UI verified with idb: nested and shallower more-replies
+  rows have trailing blue chevrons; tapping loads a child, parent collapse hides
+  the loaded child, reopening restores it without duplication. This was the
+  **pre-follow-up binary**, not verification of the new tree helpers.
+- Original comparator expansion showed gray italic `3 replies were deleted :(`
+  plus blue `More Info`, no chevron. Original exposes a whole accessible row;
+  rebuild exposes text fragments. Both remain gaps. Captures are in the approved
+  temporary directory: `stock-more-expanded.png`, `rebuild-parent-collapsed.png`,
+  `rebuild-parent-reexpanded.png` (the `original-more-*.png` pair is actually
+  rebuild; identity was subsequently checked by bundle ID/PID).
+- Follow-up Release archive/package succeeded via `scripts/run-in-sim.sh`;
+  installed and launched `com.omarsalam.ApolloRebuild` (PID 76852).
+- UI verification and device archive build are separate from host helper tests;
+  do not treat host passes as screen parity. Continue-thread navigation, loading
+  feedback, deleted-reply state, and collapsed badge counting remain open.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

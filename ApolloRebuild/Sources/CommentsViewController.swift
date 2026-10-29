@@ -11,9 +11,9 @@ import AsyncDisplayKit
 // followed by its replies in depth-first order. Everything below is a
 // flattened version of that shape.
 //
-// Still to come: collapsing a subtree (tap a comment), finding text in the
-// comments, the 3D-touch preview, live sort updates, and the "view parent
-// comments" row when the thread was entered from a single comment.
+// Still to come: finding text in the comments, the 3D-touch preview, live
+// sort updates, and the "view parent comments" row when the thread was
+// entered from a single comment.
 
 class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelegate {
 
@@ -374,36 +374,42 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// collapsed comment hides its body and every reply below it, and records
     /// how many replies that was for its badge.
     private func rebuildRows() {
+        (self.rows, self.hiddenReplyCounts) = Self.visibleRows(in: self.tree, collapsed: self.collapsedComments)
+    }
+
+    /// A more row's indent is presentation, not ancestry: it aligns with its
+    /// parent but belongs *inside* that parent's subtree. Use parentID to avoid
+    /// leaving the row behind when the parent collapses (including depth zero).
+    static func visibleRows(in tree: [Row], collapsed: Set<String>) -> ([Row], [String: Int]) {
         var visible: [Row] = []
         var counts: [String: Int] = [:]
         var index = 0
-        while index < self.tree.count {
-            let row = self.tree[index]
+        while index < tree.count {
+            let row = tree[index]
             visible.append(row)
             guard case .comment(let comment, let depth) = row,
-                  let name = comment.fullName,
-                  self.collapsedComments.contains(name) else {
+                  let name = comment.fullName, collapsed.contains(name) else {
                 index += 1
                 continue
             }
+            var descendants: Set<String> = [name]
             var scan = index + 1
             var hidden = 0
-            while scan < self.tree.count, self.depth(of: self.tree[scan]) > depth {
-                if case .comment = self.tree[scan] { hidden += 1 }
+            descendantsLoop: while scan < tree.count {
+                switch tree[scan] {
+                case .comment(let child, let childDepth):
+                    guard childDepth > depth else { break descendantsLoop }
+                    if let childName = child.fullName { descendants.insert(childName) }
+                    hidden += 1
+                case .more(let more, _):
+                    guard let parent = more.parentID, descendants.contains(parent) else { break descendantsLoop }
+                }
                 scan += 1
             }
             counts[name] = hidden
             index = scan
         }
-        self.rows = visible
-        self.hiddenReplyCounts = counts
-    }
-
-    private func depth(of row: Row) -> Int {
-        switch row {
-        case .comment(_, let depth): return depth
-        case .more(_, let depth): return depth
-        }
+        return (visible, counts)
     }
 
     /// Redraws after a collapse/expand.
@@ -472,37 +478,73 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     // MARK: - Expanding "more replies"
 
-    private func expand(_ more: RDKMoreComments, at row: Int) {
+    private func expand(_ more: RDKMoreComments) {
         guard !more.isContinueThread, let key = more.fullName, !self.expandingMore.contains(key) else { return }
         self.expandingMore.insert(key)
 
         RDKClient.shared().moreComments(more, for: self.link, sort: self.commentSort) { [weak self] collection, error in
-            guard let self = self else { return }
-            self.expandingMore.remove(key)
-            // The row may have moved if another expansion finished first
-            guard let index = self.rows.firstIndex(where: { if case .more(let other, _) = $0 { return other === more } else { return false } }) else { return }
-            guard error == nil else {
-                LogBuddy.error("CommentsViewController: morechildren failed")
-                return
-            }
-            // api/morechildren returns the comments flat, in thread order, each with its own depth
-            let newRows: [Row] = (collection as? [RDKThing] ?? []).compactMap { thing in
-                if let comment = thing as? RDKComment {
-                    return .comment(comment, depth: comment.depth)
-                } else if let nested = thing as? RDKMoreComments {
-                    return .more(nested, depth: nested.depth)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.expandingMore.remove(key)
+                // Work against the full tree, not the visible snapshot. The
+                // reader may have collapsed the parent or changed sort while
+                // the request was in flight. A stale response must not insert
+                // rows into a different thread snapshot.
+                guard let index = self.tree.firstIndex(where: {
+                    if case .more(let other, _) = $0 { return other === more }
+                    return false
+                }) else { return }
+                guard error == nil else {
+                    LogBuddy.error("CommentsViewController: morechildren failed")
+                    return
                 }
-                return nil
+                let newRows = Self.rowsFromMoreChildren(collection as? [RDKThing] ?? [], in: self.tree)
+                self.tree.replaceSubrange(index...index, with: newRows)
+                self.rebuildRows()
+                self.tableNode.reloadData()
             }
-            self.rows.replaceSubrange(index...index, with: newRows)
-            if let treeIndex = self.tree.firstIndex(where: { if case .more(let other, _) = $0 { return other === more } else { return false } }) {
-                self.tree.replaceSubrange(treeIndex...treeIndex, with: newRows)
-            }
-            self.tableNode.performBatchUpdates({
-                self.tableNode.deleteRows(at: [IndexPath(row: index, section: 1)], with: .fade)
-                self.tableNode.insertRows(at: (index..<(index + newRows.count)).map { IndexPath(row: $0, section: 1) }, with: .fade)
-            }, completion: nil)
         }
+    }
+
+    /// Unlike a listing, morechildren returns a flat collection. Reassemble
+    /// ancestry by parentID rather than assuming API order is depth-first.
+    /// Indent more rows at their parent's depth, just as `flatten` does.
+    static func rowsFromMoreChildren(_ things: [RDKThing], in tree: [Row]) -> [Row] {
+        let names = Set(things.compactMap { $0.fullName })
+        let children = Dictionary(grouping: things, by: { thing -> String in
+            if let comment = thing as? RDKComment { return comment.parentID ?? "" }
+            return (thing as? RDKMoreComments)?.parentID ?? ""
+        })
+        var depths: [String: Int] = [:]
+        for row in tree {
+            if case .comment(let comment, let depth) = row, let name = comment.fullName {
+                depths[name] = depth
+            }
+        }
+        var result: [Row] = []
+        var visited: Set<ObjectIdentifier> = []
+        func append(_ thing: RDKThing) {
+            guard visited.insert(ObjectIdentifier(thing)).inserted else { return }
+            if let comment = thing as? RDKComment {
+                let depth = comment.parentID.flatMap { depths[$0] }.map { $0 + 1 } ?? comment.depth
+                result.append(.comment(comment, depth: depth))
+                if let name = comment.fullName {
+                    depths[name] = depth
+                    for child in children[name] ?? [] { append(child) }
+                }
+            } else if let more = thing as? RDKMoreComments {
+                let depth = more.parentID.flatMap { depths[$0] } ?? max(0, more.depth - 1)
+                result.append(.more(more, depth: depth))
+            }
+        }
+        for thing in things {
+            let parent = (thing as? RDKComment)?.parentID ?? (thing as? RDKMoreComments)?.parentID ?? ""
+            if !names.contains(parent) { append(thing) }
+        }
+        // Preserve malformed/orphaned entries without recursing forever on a
+        // cycle. Normal responses have already visited everything above.
+        for thing in things { append(thing) }
+        return result
     }
 
     // MARK: - ASTableDataSource / ASTableDelegate
@@ -656,7 +698,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         guard indexPath.section == 1, indexPath.row < self.rows.count else { return }
         switch self.rows[indexPath.row] {
         case .more(let more, _):
-            self.expand(more, at: indexPath.row)
+            self.expand(more)
         case .comment(let comment, _):
             self.toggleCollapse(comment)
         }

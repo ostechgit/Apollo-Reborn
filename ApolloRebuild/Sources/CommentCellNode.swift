@@ -122,7 +122,7 @@ enum CommentBody {
 //     the age sit on the right (age right-aligned 16pt in)
 //   * a 0.5pt #CCCCCC hairline sits at the top of the cell, inset by 12*depth
 //
-// Not wired up yet: collapsing a subtree, stickied comments, awards, the
+// Not wired up yet: stickied comments, awards, the
 // deleted/moderator banners, the "show post context" row, and the swipe
 // gestures that vote/collapse a comment.
 
@@ -477,8 +477,8 @@ class CommentCellNode: ASCellNode {
 //   * a blue disclosure chevron (13pt wide) sits 16pt from the right edge
 //   * the row is 39pt tall
 //
-// The original also swaps the chevron for a spinner while the request is in
-// flight and, when replies were deleted, links to the explanation screen.
+// The original also has a loading activity indicator and, when replies were
+// deleted, links to the explanation screen. Those states are not implemented.
 class MoreCommentsCellNode: ASCellNode {
 
     private let textNode = ASTextNode()
