@@ -41,8 +41,19 @@ class RedditListViewController: UIViewController, UITableViewDataSource, UITable
         // Fetch subscribed subreddits from Reddit
         self.isLoading = true
         
-        RDKClient.shared.subscribedSubreddits(pagination: nil) { [weak self] subreddits, error in
-            if let subreddits = subreddits {
+        RDKClient.shared.getPath("subreddits/mine/subscriber", parameters: nil) { [weak self] response, error in
+            if let response = response, let data = response as? [String: Any],
+               let children = data["data"]?["children"] as? [[String: Any]] {
+                var subreddits: [RDKSubreddit] = []
+                for child in children {
+                    if let subredditData = child["data"] {
+                        let subreddit = RDKSubreddit()
+                        subreddit.display_name = subredditData["display_name"] as? String
+                        subreddit.title = subredditData["title"] as? String
+                        subreddit.subscribers = subredditData["subscribers"] as? Int
+                        subreddits.append(subreddit)
+                    }
+                }
                 self?.subreddits = subreddits
             } else if let error = error {
                 print("Failed to load subreddits: \(error.localizedDescription)")

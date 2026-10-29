@@ -6,7 +6,7 @@
 
 **RE Artifacts:** `~/Projects/Apollo-Source-Private/` - 53,316 decompiled functions, 7,806 recovered names, naming pipeline complete.
 
-## Status: Phase 1 & 2 Complete
+## Status: Phase 1 & 2 Complete, Build Issues Remaining
 
 Last updated: 2026-10-29
 
@@ -125,8 +125,8 @@ Last updated: 2026-10-29
 
 ## Known Issues
 
-- 7 original source files missing from rebuild
-- 31 view controllers use placeholder data instead of real API calls
+- Build has remaining errors related to RDKClient method names (e.g., `subscribedSubreddits`, `inboxMessages`, `savedLinks`, `multiredditWithName`, `moderationQueueForSubredditWithName`, `moderationLogForSubredditWithName`, `modmailConversations`, `searchModmail`, `unreadInboxMessages`, `voteOnLink`, `saveLink`, `hideLink`)
+- These methods need to be implemented in RDKClient or the view controllers need to use the generic `getPath`/`postPath` methods
 - Need to verify all 43 view controllers work correctly with real API responses
 
 ## Resources

@@ -4,7 +4,7 @@ import StoreKit
 // AppStoreBuddy - manages in-app purchases and App Store integration
 // Reconstructed from apollo-base 1.15.11 binary analysis.
 
-class AppStoreBuddy {
+class AppStoreBuddy: NSObject {
     
     static let shared = AppStoreBuddy()
     
