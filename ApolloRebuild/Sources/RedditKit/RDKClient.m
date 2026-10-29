@@ -544,6 +544,10 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     return [self listingTaskWithPath:@"subreddits/mine/subscriber" parameters:nil pagination:pagination completion:completion];
 }
 
+- (NSURLSessionDataTask *)moderatedSubredditsWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:@"subreddits/mine/moderator.json" parameters:nil pagination:pagination completion:completion];
+}
+
 - (NSURLSessionDataTask *)inboxMessagesWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
     return [self listingTaskWithPath:@"messages/" parameters:nil pagination:pagination completion:completion];
 }
@@ -562,9 +566,52 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     return [self getPath:[NSString stringWithFormat:@"api/multi/user/%@", name] parameters:nil completion:completion];
 }
 
-- (NSURLSessionDataTask *)linksInMultireddit:(NSString *)name category:(RDKSubredditCategory)category pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
-    NSString *path = [NSString stringWithFormat:@"m/%@/%@.json", name, RDKStringFromSubredditCategory(category)];
-    return [self listingTaskWithPath:path parameters:nil pagination:pagination completion:completion];
+// api/multi/mine lists the account's multireddits, which RDKObjectBuilder maps
+// to RDKMultireddit. Reddit has served this two ways over time: a Listing
+// (data.children of "LabeledMulti" things) and, on some app types, a bare array
+// of multi objects. Both are handled so an empty or array-shaped response isn't
+// mistaken for a failure.
+- (NSURLSessionDataTask *)multiredditsWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self getPath:@"api/multi/mine.json" parameters:nil completion:^(id response, NSError *error) {
+        if (error) {
+            completion(nil, nil, error);
+            return;
+        }
+
+        NSMutableArray *objects = [NSMutableArray array];
+        if ([response isKindOfClass:[NSDictionary class]]) {
+            [objects addObjectsFromArray:[self objectsFromListingResponse:response]];
+        } else if ([response isKindOfClass:[NSArray class]]) {
+            for (id thing in response) {
+                // A bare array holds the multi dicts directly; tolerate either the
+                // wrapped or already-unwrapped shape
+                NSDictionary *JSON = [thing isKindOfClass:[NSDictionary class]] ? thing : nil;
+                if (JSON[@"data"]) {
+                    id object = [[RDKObjectBuilder objectBuilder] objectFromJSON:JSON];
+                    if (object) {
+                        [objects addObject:object];
+                    }
+                }
+            }
+        } else {
+            NSLog(@"[RDKClient] api/multi/mine returned an unexpected response (%@)", NSStringFromClass([response class]));
+            completion(nil, nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Expected a listing."]);
+            return;
+        }
+
+        // Nothing paginates here in practice; keep the caller's preferences anyway
+        RDKPagination *next = [RDKPagination paginationFromListingResponse:response];
+        next.limit = pagination.limit;
+        next.timeMethod = pagination.timeMethod;
+        next.userContentSortingMethod = pagination.userContentSortingMethod;
+        completion(objects, next, nil);
+    }];
+}
+
+- (NSURLSessionDataTask *)linksInMultiredditWithName:(NSString *)name userName:(NSString *)userName category:(RDKSubredditCategory)category pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    // The named form resolves to the same path api/multi/mine reports
+    NSString *path = [NSString stringWithFormat:@"user/%@/m/%@", userName, name];
+    return [self linksInMultiredditWithPath:path category:category pagination:pagination completion:completion];
 }
 
 // MARK: - Moderation

@@ -90,7 +90,7 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 - (nullable NSURLSessionDataTask *)frontPageLinksWithCategory:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
 - (nullable NSURLSessionDataTask *)linksInAllSubredditsWithCategory:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
 - (nullable NSURLSessionDataTask *)linksInSubredditWithName:(NSString *)subredditName category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(links(inSubredditWithName:category:pagination:completion:));
-- (nullable NSURLSessionDataTask *)linksInMultiredditWithPath:(NSString *)path category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)linksInMultiredditWithPath:(NSString *)path category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(links(inMultiredditPath:category:pagination:completion:));
 - (nullable NSURLSessionDataTask *)submittedLinksByUserWithUsername:(NSString *)username pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
 
 // MARK: Comments
@@ -112,6 +112,8 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 // MARK: User content (account required)
 
 - (nullable NSURLSessionDataTask *)subscribedSubredditsWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(subscribedSubreddits(pagination:completion:));
+// subreddits/mine/moderator — the subreddits the account moderates
+- (nullable NSURLSessionDataTask *)moderatedSubredditsWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(moderatedSubreddits(pagination:completion:));
 - (nullable NSURLSessionDataTask *)inboxMessagesWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(inboxMessages(pagination:completion:));
 - (nullable NSURLSessionDataTask *)unreadInboxMessagesWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(unreadInboxMessages(pagination:completion:));
 - (nullable NSURLSessionDataTask *)savedLinksWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(savedLinks(pagination:completion:));
@@ -119,7 +121,11 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 // MARK: Multireddits (account required)
 
 - (nullable NSURLSessionDataTask *)multiredditWithName:(NSString *)name completion:(RDKObjectCompletionBlock)completion;
-- (nullable NSURLSessionDataTask *)linksInMultireddit:(NSString *)name category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(links(inMultireddit:category:pagination:completion:));
+// api/multi/mine.json — every multireddit the account owns, newest Reddit shape
+- (nullable NSURLSessionDataTask *)multiredditsWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(multireddits(pagination:completion:));
+// The original's name-based convenience: user/<userName>/m/<name> is the path
+// Reddit serves a multireddit's listing from
+- (nullable NSURLSessionDataTask *)linksInMultiredditWithName:(NSString *)name userName:(NSString *)userName category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(links(inMultireddit:userName:category:pagination:completion:));
 
 // MARK: Moderation (moderator required)
 

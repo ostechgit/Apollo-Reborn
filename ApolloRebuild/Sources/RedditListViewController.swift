@@ -1,56 +1,112 @@
 import UIKit
-import AsyncDisplayKit
 import os.log
 
 let apolloLog = OSLog(subsystem: "com.omarsalam.ApolloRebuild", category: "RedditList")
 
-// RedditListViewController - displays a list of subreddits or multireddits
+// RedditListViewController - the Home tab's subreddit list
 // Reconstructed from apollo-base 1.15.11 binary analysis.
 //
-// Original structure (from decompiled code):
-// - Section 0: "Posts from subscriptions" with rows: Home, Popular, All, Moderated
-// - Section 1: "FAVORITES"
-// - Section 2: "MULTIREDDITS" (if any)
-// - Section 3: "MODERATED" (subreddits the user moderates)
-// - Sections 4+: Alphabetical A-Z sections with section index
+// Original structure (verified against the shipped app and Apollo Reborn's hooks):
+//   section 0  feed shortcuts: "Posts from subscriptions" (Home), Popular, All
+//   FAVORITES      Apollo's own favorite list (NSUserDefaults "FavoriteSubreddits")
+//   MULTIREDDITS   api/multi/mine
+//   MODERATED      subreddits/mine/moderator
+//   A-Z            subreddits/mine/subscriber, in UILocalizedIndexedCollation sections
+//
+// Every section is data, so nothing here does index arithmetic: `sections` is
+// rebuilt from the loaded lists and the table just reads it back.
+//
+// Favorites are a local Apollo concept (not a Reddit subscription), so they come
+// from the same defaults key the original uses and refresh when the original's
+// notification fires.
 
-class RedditListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
-    
+final class RedditListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+
+    // Apollo's native favorites key and change notification (see Apollo-Reborn's
+    // UDKeyApolloFavoriteSubreddits / ApolloFavoriteSubredditsUpdatedNotification)
+    private static let favoritesKey = "FavoriteSubreddits"
+    private static let favoritesChangedNotification = Notification.Name("com.christianselig.FavoriteSubredditsUpdated")
+
+    // One visible row
+    private enum Item {
+        case home
+        case popular
+        case all
+        case favorite(String)
+        case multireddit(name: String, path: String)
+        case moderated(String)
+        case subreddit(String)
+
+        var title: String {
+            switch self {
+            case .home: return "Posts from subscriptions"
+            case .popular: return "Popular"
+            case .all: return "All"
+            case .favorite(let name): return "r/" + name
+            case .multireddit(let name, _): return "m/" + name
+            case .moderated(let name): return "r/" + name
+            case .subreddit(let name): return "r/" + name
+            }
+        }
+
+        var iconName: String? {
+            switch self {
+            case .home: return "house"
+            case .popular: return "flame"
+            case .all: return "globe"
+            default: return nil
+            }
+        }
+    }
+
+    // One visible section. `title` is nil for the shortcuts section, which the
+    // original draws with no header.
+    private struct Section {
+        let title: String?
+        let items: [Item]
+    }
+
     private var tableView: UITableView?
-    private var subreddits: [RDKSubreddit] = []
+    private var sections: [Section] = []
+    // Titles for the right-edge index; kept parallel to the letter sections in
+    // `sections` only, so the index never points at a section that has no rows.
+    private var visibleLetterTitles: [String] = []
+
+    private var subscribedSubreddits: [RDKSubreddit] = []
     private var sectionedSubreddits: [[RDKSubreddit]] = []
     private var favorites: [String] = []
     private var multireddits: [RDKMultireddit] = []
     private var moderatedSubreddits: [RDKSubreddit] = []
     private var isLoading = false
-    
-    // Section indices
-    private let sectionHome = 0
-    private let sectionFavorites = 1
-    private let sectionMultireddits = 2
-    private let sectionModerated = 3
-    
+
+    // A-Z plus "#" for anything that isn't a letter. Apollo's list index is the
+    // standard one, and building it here avoids UILocalizedIndexedCollation:
+    // its -sectionTitles is EMPTY on the iOS 26 runtime, which is what made the
+    // original collation-based code crash on an out-of-range bucketed index.
+    private static let letterTitles: [String] = {
+        let letters = (0..<26).map { String(UnicodeScalar(UInt8(65 + $0))) }
+        return letters + ["#"]
+    }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        os_log("RedditListViewController viewDidLoad called", log: apolloLog)
-        
+        os_log("RedditListViewController viewDidLoad", log: apolloLog)
+
         self.title = "Home"
         self.view.backgroundColor = UIColor.systemBackground
-        
+
         let tableView = UITableView(frame: .zero, style: .plain)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.rowHeight = 44
         tableView.sectionIndexMinimumDisplayRowCount = 15
         tableView.sectionHeaderTopPadding = 0
-        
-        // Add refresh control
+
         let refreshControl = UIRefreshControl()
         refreshControl.addTarget(self, action: #selector(refreshSubreddits), for: .valueChanged)
         tableView.refreshControl = refreshControl
-        
+
         self.view.addSubview(tableView)
-        
         tableView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: self.view.topAnchor),
@@ -58,281 +114,266 @@ class RedditListViewController: UIViewController, UITableViewDataSource, UITable
             tableView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
         ])
-        
         self.tableView = tableView
-        
-        // Load subreddits
-        loadSubreddits()
+
+        // Favorites live in defaults, so they can change from another screen (or
+        // from Apollo's own favorite button) while this list is on screen.
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(favoritesChanged),
+                                               name: Self.favoritesChangedNotification,
+                                               object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(accountChanged),
+                                               name: AccountManager.accountDidChangeNotification,
+                                               object: nil)
+
+        reloadAll()
     }
-    
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Favorites are local, so a screen that just favorited something must not
+        // wait for the notification to reach us
+        if loadFavorites() {
+            rebuildSections()
+            tableView?.reloadData()
+        }
+    }
+
+    // MARK: - Loading
+
     @objc private func refreshSubreddits() {
-        loadSubreddits()
-        self.tableView?.refreshControl?.endRefreshing()
+        reloadAll()
     }
-    
-    private func loadSubreddits() {
-        self.isLoading = true
-        os_log("Loading subreddits...", log: apolloLog)
-        
-        // Load favorites from UserDefaults
-        let defaults = UserDefaults.standard
-        self.favorites = defaults.stringArray(forKey: "favoriteSubreddits") ?? []
-        os_log("Favorites loaded: %d", log: apolloLog, self.favorites.count)
-        
-        // Fetch subscribed subreddits from Reddit
-        let task = RDKClient.shared().subscribedSubreddits(pagination: nil) { [weak self] subreddits, pagination, error in
-            os_log("Subreddit request completed", log: apolloLog)
-            if let subreddits = subreddits {
-                self?.subreddits = subreddits as? [RDKSubreddit] ?? []
-                os_log("Loaded %d subreddits", log: apolloLog, self?.subreddits.count ?? 0)
+
+    @objc private func favoritesChanged() {
+        if loadFavorites() {
+            rebuildSections()
+            tableView?.reloadData()
+        }
+    }
+
+    @objc private func accountChanged() {
+        reloadAll()
+    }
+
+    private func reloadAll() {
+        loadFavorites()
+
+        guard AccountManager.shared.isLogged else {
+            // Same as the original: the shortcuts stay, the account sections are empty
+            os_log("Not signed in; only the feed shortcuts will list", log: apolloLog)
+            subscribedSubreddits = []
+            moderatedSubreddits = []
+            multireddits = []
+            finishLoading()
+            return
+        }
+
+        isLoading = true
+        loadSubscribedSubreddits()
+        loadModeratedSubreddits()
+        loadMultireddits()
+    }
+
+    private func loadSubscribedSubreddits() {
+        _ = RDKClient.shared().subscribedSubreddits(pagination: nil) { [weak self] subreddits, _, error in
+            guard let self = self else { return }
+            if let subreddits = subreddits as? [RDKSubreddit] {
+                self.subscribedSubreddits = subreddits
+                os_log("Subscribed subreddits: %d", log: apolloLog, subreddits.count)
             } else if let error = error {
-                os_log("Failed to load subreddits: %s", log: apolloLog, error.localizedDescription)
+                os_log("Subscribed subreddits failed: %s", log: apolloLog, error.localizedDescription)
             }
-            
-            // Section and sort subreddits
-            self?.sectionSubreddits()
-            
-            self?.isLoading = false
-            self?.tableView?.reloadData()
+            self.sectionSubreddits()
+            self.finishLoading()
         }
-        os_log("Task created: %d", log: apolloLog, task != nil ? 1 : 0)
     }
-    
+
+    private func loadModeratedSubreddits() {
+        _ = RDKClient.shared().moderatedSubreddits(pagination: nil) { [weak self] subreddits, _, error in
+            guard let self = self else { return }
+            if let subreddits = subreddits as? [RDKSubreddit] {
+                self.moderatedSubreddits = subreddits
+                os_log("Moderated subreddits: %d", log: apolloLog, subreddits.count)
+            } else if let error = error {
+                os_log("Moderated subreddits failed: %s", log: apolloLog, error.localizedDescription)
+            }
+            self.finishLoading()
+        }
+    }
+
+    private func loadMultireddits() {
+        _ = RDKClient.shared().multireddits(pagination: nil) { [weak self] multireddits, _, error in
+            guard let self = self else { return }
+            if let multireddits = multireddits as? [RDKMultireddit] {
+                self.multireddits = multireddits
+                os_log("Multireddits: %d", log: apolloLog, multireddits.count)
+            } else if let error = error {
+                os_log("Multireddits failed: %s", log: apolloLog, error.localizedDescription)
+            }
+            self.finishLoading()
+        }
+    }
+
+    // Each of the three requests lands independently; the list reloads as each
+    // arrives so a slow one never holds the others back.
+    private func finishLoading() {
+        isLoading = false
+        rebuildSections()
+        tableView?.reloadData()
+        tableView?.refreshControl?.endRefreshing()
+    }
+
+    private func loadFavorites() -> Bool {
+        let saved = UserDefaults.standard.stringArray(forKey: Self.favoritesKey) ?? []
+        let changed = saved != favorites
+        favorites = saved
+        return changed
+    }
+
+    // MARK: - Sections
+
+    private func rebuildSections() {
+        var result: [Section] = []
+
+        // Feed shortcuts are always present, exactly as in the original
+        result.append(Section(title: nil, items: [.home, .popular, .all]))
+
+        if !favorites.isEmpty {
+            result.append(Section(title: "FAVORITES", items: favorites.map { Item.favorite($0) }))
+        }
+
+        if !multireddits.isEmpty {
+            let items: [Item] = multireddits.map { multireddit in
+                let name = multireddit.name ?? multireddit.displayName ?? ""
+                let path = multireddit.path ?? ""
+                os_log("Multireddit %s path %s", log: apolloLog, name, path)
+                return Item.multireddit(name: name, path: path)
+            }
+            result.append(Section(title: "MULTIREDDITS", items: items))
+        }
+
+        if !moderatedSubreddits.isEmpty {
+            let items: [Item] = moderatedSubreddits.map {
+                Item.moderated($0.display_name ?? $0.name ?? "")
+            }
+            result.append(Section(title: "MODERATED", items: items))
+        }
+
+        // A-Z, skipping the letters with nothing in them so the index stays honest
+        var titles: [String] = []
+        for (index, subreddits) in sectionedSubreddits.enumerated() where !subreddits.isEmpty {
+            let title = Self.letterTitles[index]
+            titles.append(title)
+            let items: [Item] = subreddits.map { Item.subreddit($0.display_name ?? $0.name ?? "") }
+            result.append(Section(title: title, items: items))
+        }
+
+        visibleLetterTitles = titles
+        sections = result
+    }
+
+    // Bucket subscribed subreddits by the first character of their display name.
+    // The original used UILocalizedIndexedCollation, but its -sectionTitles comes
+    // back EMPTY on the iOS 26 runtime, so the letter list is built here instead.
     private func sectionSubreddits() {
-        let idxCollation = UILocalizedIndexedCollation()
-        
-        // Create empty sections for each letter
-        self.sectionedSubreddits = []
-        for _ in 0..<idxCollation.sectionTitles.count {
-            self.sectionedSubreddits.append([])
+        let titles = Self.letterTitles
+        var buckets = [[RDKSubreddit]](repeating: [], count: titles.count)
+
+        for subreddit in subscribedSubreddits {
+            let name = subreddit.display_name ?? subreddit.name ?? ""
+            guard !name.isEmpty else { continue }
+            buckets[letterSection(for: name)].append(subreddit)
         }
-        
-        // Sort subreddits into sections by first character
-        for subreddit in self.subreddits {
-            let name = subreddit.display_name ?? ""
-            if name.isEmpty {
-                continue
-            }
-            let firstChar = name.prefix(1).uppercased()
-            // Find the section that starts with this character
-            let sectionIndex = idxCollation.sectionTitles.firstIndex(where: { $0 == firstChar }) ?? 0
-            if sectionIndex >= 0 && sectionIndex < self.sectionedSubreddits.count {
-                self.sectionedSubreddits[sectionIndex].append(subreddit)
+
+        for index in buckets.indices {
+            buckets[index].sort {
+                ($0.display_name ?? "").localizedCaseInsensitiveCompare($1.display_name ?? "") == .orderedAscending
             }
         }
-        
-        // Sort each section
-        for i in 0..<self.sectionedSubreddits.count {
-            self.sectionedSubreddits[i].sort { a, b in
-                (a.display_name ?? "").localizedCaseInsensitiveCompare(b.display_name ?? "") == .orderedAscending
-            }
-        }
+
+        sectionedSubreddits = buckets
+        os_log("Sectioned %d subreddits into %d letter sections", log: apolloLog, subscribedSubreddits.count, buckets.count)
     }
-    
+
+    // A-Z map to their own sections; everything that isn't a letter (digits,
+    // punctuation, emoji) lands in the trailing "#" section.
+    private func letterSection(for name: String) -> Int {
+        let titles = Self.letterTitles
+        guard let first = name.first else { return titles.count - 1 }
+
+        let uppercased = String(first).uppercased()
+        guard let scalar = uppercased.unicodeScalars.first, uppercased.unicodeScalars.count == 1,
+              scalar.isASCII, scalar.value >= 65, scalar.value <= 90 else {
+            return titles.count - 1
+        }
+        return Int(scalar.value - 65)
+    }
+
     // MARK: - UITableViewDataSource
-    
+
     func numberOfSections(in tableView: UITableView) -> Int {
-        // Section 0: Home (Posts from subscriptions)
-        // Section 1: Favorites
-        // Section 2: Multireddits (if any)
-        // Section 3: Moderated
-        // Sections 4+: Alphabetical A-Z
-        
-        let total = 4 + self.sectionedSubreddits.count
-        return total
+        return sections.count
     }
-    
+
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        switch section {
-        case sectionHome:
-            // Home section has fixed rows: Home, Popular, All, Moderated (if applicable)
-            var count = 1 // Home (Posts from subscriptions)
-            let defaults = UserDefaults.standard
-            if defaults.bool(forKey: "showPopularInHome") {
-                count += 1 // Popular
-            }
-            if defaults.bool(forKey: "showAllInHome") {
-                count += 1 // All
-            }
-            if !self.moderatedSubreddits.isEmpty {
-                count += 1 // Moderated
-            }
-            return count
-        case sectionFavorites:
-            return self.favorites.count
-        case sectionMultireddits:
-            return self.multireddits.count
-        case sectionModerated:
-            return self.moderatedSubreddits.count
-        default:
-            // Alphabetical sections
-            let alphaSection = section - 4
-            if alphaSection >= 0 && alphaSection < self.sectionedSubreddits.count {
-                return self.sectionedSubreddits[alphaSection].count
-            }
-            return 0
-        }
+        return sections[section].items.count
     }
-    
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        switch indexPath.section {
-        case sectionHome:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "HomeCell")
-            switch indexPath.row {
-            case 0:
-                cell.textLabel?.text = "Posts from subscriptions"
-                cell.imageView?.image = UIImage(systemName: "house")
-            case 1:
-                cell.textLabel?.text = "Popular"
-                cell.imageView?.image = UIImage(systemName: "flame")
-            case 2:
-                cell.textLabel?.text = "All"
-                cell.imageView?.image = UIImage(systemName: "globe")
-            case 3:
-                cell.textLabel?.text = "Moderated"
-                cell.imageView?.image = UIImage(systemName: "shield")
-            default:
-                break
-            }
-            return cell
-        case sectionFavorites:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "FavoriteCell")
-            let name = self.favorites[indexPath.row]
-            cell.textLabel?.text = "r/" + name
-            return cell
-        case sectionMultireddits:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "MultiredditCell")
-            let multireddit = self.multireddits[indexPath.row]
-            cell.textLabel?.text = multireddit.name
-            return cell
-        case sectionModerated:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "ModeratedCell")
-            let subreddit = self.moderatedSubreddits[indexPath.row]
-            cell.textLabel?.text = "r/" + (subreddit.display_name ?? "")
-            return cell
-        default:
-            // Alphabetical sections
-            let cell = UITableViewCell(style: .default, reuseIdentifier: "SubredditCell")
-            let alphaSection = indexPath.section - 4
-            if alphaSection >= 0 && alphaSection < self.sectionedSubreddits.count {
-                let subreddit = self.sectionedSubreddits[alphaSection][indexPath.row]
-                cell.textLabel?.text = "r/" + (subreddit.display_name ?? "")
-            }
-            return cell
-        }
+        let item = sections[indexPath.section].items[indexPath.row]
+        let cell = tableView.dequeueReusableCell(withIdentifier: "SubredditCell")
+            ?? UITableViewCell(style: .default, reuseIdentifier: "SubredditCell")
+        cell.textLabel?.text = item.title
+        cell.imageView?.image = item.iconName.flatMap { UIImage(systemName: $0) }
+        cell.accessoryType = .disclosureIndicator
+        return cell
     }
-    
+
     // MARK: - UITableViewDelegate
-    
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        switch indexPath.section {
-        case sectionHome:
-            switch indexPath.row {
-            case 0:
-                // Home feed (Posts from subscriptions)
-                let postsVC = PostsViewController(postsType: .frontPage)
-                self.navigationController?.pushViewController(postsVC, animated: true)
-            case 1:
-                // Popular
-                let postsVC = PostsViewController(postsType: .popular)
-                self.navigationController?.pushViewController(postsVC, animated: true)
-            case 2:
-                // All
-                let postsVC = PostsViewController(postsType: .all)
-                self.navigationController?.pushViewController(postsVC, animated: true)
-            case 3:
-                // Moderated
-                if !self.moderatedSubreddits.isEmpty {
-                    let subreddit = self.moderatedSubreddits[0]
-                    let postsVC = PostsViewController(postsType: .subreddit(subreddit.name))
-                    self.navigationController?.pushViewController(postsVC, animated: true)
-                }
-            default:
-                break
-            }
-        case sectionFavorites:
-            let name = self.favorites[indexPath.row]
-            let postsVC = PostsViewController(postsType: .subreddit(name))
-            self.navigationController?.pushViewController(postsVC, animated: true)
-        case sectionMultireddits:
-            let multireddit = self.multireddits[indexPath.row]
-            let postsVC = PostsViewController(postsType: .multireddit(multireddit.name))
-            self.navigationController?.pushViewController(postsVC, animated: true)
-        case sectionModerated:
-            let subreddit = self.moderatedSubreddits[indexPath.row]
-            let postsVC = PostsViewController(postsType: .subreddit(subreddit.name))
-            self.navigationController?.pushViewController(postsVC, animated: true)
-        default:
-            // Alphabetical sections
-            let alphaSection = indexPath.section - 4
-            if alphaSection >= 0 && alphaSection < self.sectionedSubreddits.count {
-                let subreddit = self.sectionedSubreddits[alphaSection][indexPath.row]
-                let postsVC = PostsViewController(postsType: .subreddit(subreddit.name))
-                self.navigationController?.pushViewController(postsVC, animated: true)
-            }
-        }
-    }
-    
+
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        switch section {
-        case sectionHome:
-            return nil // No header for home section
-        case sectionFavorites:
-            return "FAVORITES"
-        case sectionMultireddits:
-            return "MULTIREDDITS"
-        case sectionModerated:
-            return "MODERATED"
-        default:
-            // Alphabetical sections
-            let idxCollation = UILocalizedIndexedCollation()
-            let alphaSection = section - 4
-            if alphaSection >= 0 && alphaSection < idxCollation.sectionTitles.count {
-                return idxCollation.sectionTitles[alphaSection]
-            }
-            return nil
+        return sections[section].title
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+
+        let postsVC: PostsViewController
+        switch sections[indexPath.section].items[indexPath.row] {
+        case .home:
+            postsVC = PostsViewController(postsType: .frontPage)
+        case .popular:
+            postsVC = PostsViewController(postsType: .popular)
+        case .all:
+            postsVC = PostsViewController(postsType: .all)
+        case .favorite(let name), .moderated(let name), .subreddit(let name):
+            postsVC = PostsViewController(postsType: .subreddit(name))
+        case .multireddit(let name, let path):
+            postsVC = PostsViewController(postsType: .multireddit(name: name, path: path))
         }
+
+        navigationController?.pushViewController(postsVC, animated: true)
     }
-    
+
+    // MARK: - Section index
+
+    // Only letters that actually have subreddits behind them, so tapping "Z" on
+    // an account with no Z subreddits can't land on an empty section.
     func sectionIndexTitles(for tableView: UITableView) -> [String]? {
-        let idxCollation = UILocalizedIndexedCollation()
-        return idxCollation.sectionTitles
+        return visibleLetterTitles.isEmpty ? nil : visibleLetterTitles
     }
-    
+
     func tableView(_ tableView: UITableView, sectionForSectionIndexTitle title: String, at index: Int) -> Int {
-        // Add offset for the non-alphabetical sections
-        return index + 4
+        // Resolve by title instead of arithmetic, since the fixed sections above
+        // are only present when they have content.
+        return sections.firstIndex { $0.title == title } ?? 0
     }
 }
 
-// SubredditCellNode - displays a single subreddit
-class SubredditCellNode: ASCellNode {
-    
-    private let subreddit: RDKSubreddit
-    private let label: ASTextNode
-    
-    init(subreddit: RDKSubreddit) {
-        self.subreddit = subreddit
-        self.label = ASTextNode()
-        super.init()
-        
-        self.backgroundColor = UIColor.clear
-        
-        self.label.attributedText = NSAttributedString(
-            string: "r/" + (self.subreddit.display_name ?? ""),
-            attributes: [
-                .font: UIFont.systemFont(ofSize: 14),
-                .foregroundColor: UIColor.label
-            ]
-        )
-        
-        self.addSubnode(self.label)
-    }
-    
-    override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
-        return ASInsetLayoutSpec(
-            insets: UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16),
-            child: self.label
-        )
-    }
-}
+// SubredditCellNode lives in SubredditCellNode.swift, shared with the search results

@@ -10,12 +10,11 @@
 
 Last updated: 2026-10-29
 
-**Latest progress (2026-10-29):**
-- Fixed crash in `RedditListViewController.sectionSubreddits()` - was using `UILocalizedIndexedCollation.section(for:collationStringSelector:)` with a string directly instead of an object+selector. Replaced with manual section determination by first character.
-- App now shows correct subreddit list structure: "Posts from subscriptions" (Home), FAVORITES, MULTIREDDITS, MODERATED sections.
-- Sections are empty because no user is logged in yet.
-- Compared with original Apollo app - the original shows posts feed on Home tab, subreddit list is accessed via slide-out menu (swipe from left edge).
-- **Next step:** Test with logged-in user to verify subscribed subreddits load correctly in alphabetical sections.
+**Latest progress (2026-10-29, logged in with a real account):**
+- **Root cause of the sectioning crash:** `UILocalizedIndexedCollation.sectionTitles` returns an **empty array** on the iOS 26 simulator runtime, so the bucketed array had 0 slots and every insert trapped. (The earlier note about needing an object + selector was wrong.) The list now builds its own `A–Z` + `"#"` titles and buckets by first character; `sectionIndexTitles` only lists letters that actually have subreddits.
+- **Multireddit listings were 404ing:** `m/<name>/<sort>.json` isn't a valid endpoint. The original calls `linksInMultiredditWithName:userName:...`, which formats `user/%@/m/%@`, and `linksInMultiredditWithPath:` appends `/<sort>.json`. `api/multi/mine` returns `path` as `/user/<user>/m/<name>/`, so the list now carries both `name` (title) and `path` (request) and `PostsViewController` calls `links(inMultiredditPath:...)`.
+- **Verified in the simulator** (signed in as `paloking`): subscribed 25, moderated 1, multireddit 1, sectioned into 27 letter buckets; tapping `r/apple` loads posts, tapping `m/priva` loads its posts (previously 404), "Posts from subscriptions" loads the front page.
+- **Next step:** the letter sections are currently one-row-per-letter (A, D, G, …) as Apollo does; next visible gap is flair/markdown rendering (post flairs show raw `:baseball:` and comment bodies show raw markdown).
 
 ## Phase 1: Implement Missing Source Files (7 files, 43 functions)
 

@@ -11,7 +11,9 @@ enum PostsType {
     case popular
     case all
     case subreddit(String)
-    case multireddit(String)
+    // A multireddit needs both the name (for the title) and the path Reddit
+    // serves its listing from (api/multi/mine's "path", e.g. user/x/m/y)
+    case multireddit(name: String, path: String)
     
     var title: String {
         switch self {
@@ -19,7 +21,7 @@ enum PostsType {
         case .popular: return "Popular"
         case .all: return "All"
         case .subreddit(let name): return "r/" + name
-        case .multireddit(let name): return "m/" + name
+        case .multireddit(let name, _): return "m/" + name
         }
     }
 }
@@ -200,9 +202,14 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             client.linksInAllSubreddits(with: self.currentSort, pagination: pagination, completion: handler)
         case .subreddit(let name):
             client.links(inSubredditWithName: name, category: self.currentSort, pagination: pagination, completion: handler)
-        case .multireddit(let name):
-            // Multireddits use the same endpoint as subreddits
-            client.links(inSubredditWithName: name, category: self.currentSort, pagination: pagination, completion: handler)
+        case .multireddit(let name, let path):
+            // api/multi/mine's "path" is how Reddit addresses the multi
+            // (<path>/<sort>.json); fall back to the named form if it's missing
+            if path.isEmpty {
+                client.links(inMultireddit: name, userName: AccountManager.shared.username ?? "", category: self.currentSort, pagination: pagination, completion: handler)
+            } else {
+                client.links(inMultiredditPath: path, category: self.currentSort, pagination: pagination, completion: handler)
+            }
         }
     }
     

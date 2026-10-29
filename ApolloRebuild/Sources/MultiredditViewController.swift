@@ -52,7 +52,7 @@ class MultiredditViewController: UIViewController, UITableViewDataSource, UITabl
         // Fetch posts from the multireddit
         self.isLoading = true
         
-        RDKClient.shared().links(inMultireddit: self.multiredditName, category: .hot, pagination: nil) { [weak self] links, pagination, error in
+        RDKClient.shared().links(inMultireddit: self.multiredditName, userName: AccountManager.shared.username ?? "", category: .hot, pagination: nil) { [weak self] links, pagination, error in
             if let links = links {
                 self?.posts = links as? [RDKLink] ?? []
             } else if let error = error {
