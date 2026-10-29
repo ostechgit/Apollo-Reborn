@@ -249,9 +249,16 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
   zero failures (existing `description` property warning remains).
 - Original named decompilation `0x100492150` (MoreCommentsCellNode layout)
   confirms layout reads the model's depth; `0x100490b64` (layout) positions an
-  activity indicator in the content area. The earlier claim that loading merely
-  swaps the right chevron for a spinner is **not established**; loading-state
-  implementation awaits investigation of the actual state setter.
+  activity indicator in the content area. Exact horizontal placement remains
+  unresolved in Ghidra's floating-point/frame pseudocode.
+- Loading state is inlined, not a dedicated setter: `0x1007237ec` writes
+  `isLoading = 1`, fades all subnodes to alpha 0 and the activity indicator to
+  alpha 1. Stop paths `0x10071d264`, `0x10071c308`, `0x10071cca8` reverse those
+  values. `didLoad` helper `0x100491ffc` creates style-100 activity indicator,
+  starts it once, sets alpha 0, and adds it to the cell view. Thus the earlier
+  chevron-only spinner-swap claim was wrong. Source: existing named Ghidra
+  export; exact geometry and initiating caller still need corroboration before
+  implementation.
 - Installed checkpoint UI verified with idb: nested and shallower more-replies
   rows have trailing blue chevrons; tapping loads a child, parent collapse hides
   the loaded child, reopening restores it without duplication. This was the
@@ -264,6 +271,19 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
   rebuild; identity was subsequently checked by bundle ID/PID).
 - Follow-up Release archive/package succeeded via `scripts/run-in-sim.sh`;
   installed and launched `com.omarsalam.ApolloRebuild` (PID 76852).
+- New PID 76852 verified with idb in Me_irl / 301 Comments: collapsing
+  Forever203 before expansion hides its nested `1 more reply` placeholder;
+  reopening restores it. Expansion replaces it with a deeper comment;
+  collapse/reopen preserves that child once, without resurrecting the placeholder
+  or duplicating the child. No crash observed. Root-level placeholder was not
+  found in a bounded search and remains runtime-unverified (host test passes).
+- Concrete remaining count discrepancy: unloaded collapse shows badge `0` while
+  the hidden placeholder says `1 more reply`; after expansion badge becomes `1`.
+  Confirm original's counting rule before changing it. Fetched child had only
+  author/score/time, no body in screenshot or hierarchy; inspect its real JSON
+  before calling this a rendering bug. Evidence: approved temp directory's
+  `new-before`, `new-unloaded-collapsed`, `new-unloaded-reopened`, `new-loaded`,
+  `new-loaded-collapsed`, `new-loaded-reopened` PNG/JSON pairs.
 - UI verification and device archive build are separate from host helper tests;
   do not treat host passes as screen parity. Continue-thread navigation, loading
   feedback, deleted-reply state, and collapsed badge counting remain open.
