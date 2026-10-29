@@ -41,9 +41,9 @@ class NotificationsViewController: UIViewController, UITableViewDataSource, UITa
         // Fetch notifications from Reddit (using unread inbox as proxy)
         self.isLoading = true
         
-        RDKClient.shared.unreadInboxMessages(pagination: nil) { [weak self] messages, error in
+        RDKClient.shared().unreadInboxMessages(pagination: nil) { [weak self] messages, pagination, error in
             if let messages = messages {
-                self?.notifications = messages
+                self?.notifications = messages as? [RDKMessage] ?? []
             } else if let error = error {
                 print("Failed to load notifications: \(error.localizedDescription)")
             }

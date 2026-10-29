@@ -72,9 +72,9 @@ class InboxViewController: UIViewController, UITableViewDataSource, UITableViewD
         // Fetch inbox messages from Reddit
         self.isLoading = true
         
-        RDKClient.shared.inboxMessages(pagination: nil) { [weak self] messages, error in
+        RDKClient.shared().inboxMessages(pagination: nil) { [weak self] messages, pagination, error in
             if let messages = messages {
-                self?.messages = messages
+                self?.messages = messages as? [RDKMessage] ?? []
             } else if let error = error {
                 print("Failed to load inbox: \(error.localizedDescription)")
             }

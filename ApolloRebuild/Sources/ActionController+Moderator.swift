@@ -13,7 +13,7 @@ extension ActionController {
                              completion: ((Action) -> Void)? = nil) {
         
         let approveAction = Action(title: "Approve", icon: "option-approve", style: .default) { _ in
-            RDKClient.shared.approveComment(comment) { error in
+            RDKClient.shared().approve(comment) { error in
                 if let error = error {
                     Holla.showStatus("Failed to approve comment", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -23,7 +23,7 @@ extension ActionController {
         }
         
         let removeAction = Action(title: "Remove", icon: "option-trash", style: .destructive) { _ in
-            RDKClient.shared.removeComment(comment, spam: false) { error in
+            RDKClient.shared().remove(comment, spam: false) { error in
                 if let error = error {
                     Holla.showStatus("Failed to remove comment", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -33,7 +33,7 @@ extension ActionController {
         }
         
         let spamAction = Action(title: "Mark Spam", icon: "option-spam", style: .destructive) { _ in
-            RDKClient.shared.removeComment(comment, spam: true) { error in
+            RDKClient.shared().remove(comment, spam: true) { error in
                 if let error = error {
                     Holla.showStatus("Failed to mark as spam", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -43,7 +43,7 @@ extension ActionController {
         }
         
         let stickyAction = Action(title: "Sticky", icon: "option-sticky", style: .default) { _ in
-            RDKClient.shared.distinguishComment(comment, status: 1, sticky: true) { error in
+            RDKClient.shared().distinguishComment(comment, status: 1, sticky: true) { error in
                 if let error = error {
                     Holla.showStatus("Failed to sticky comment", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -53,7 +53,7 @@ extension ActionController {
         }
         
         let lockAction = Action(title: "Lock", icon: "option-lock", style: .default) { _ in
-            RDKClient.shared.lockComment(comment) { error in
+            RDKClient.shared().lock(comment) { error in
                 if let error = error {
                     Holla.showStatus("Failed to lock comment", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -63,7 +63,7 @@ extension ActionController {
         }
         
         let distinguishAction = Action(title: "Distinguish", icon: "option-moderator", style: .default) { _ in
-            RDKClient.shared.distinguishComment(comment, status: 1, sticky: false) { error in
+            RDKClient.shared().distinguishComment(comment, status: 1, sticky: false) { error in
                 if let error = error {
                     Holla.showStatus("Failed to distinguish comment", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -73,7 +73,7 @@ extension ActionController {
         }
         
         let banAction = Action(title: "Ban User", icon: "option-ban", style: .destructive) { _ in
-            let banVC = BanUserViewController(username: comment.author, subreddit: comment.subreddit)
+            let banVC = BanUserViewController(username: comment.author ?? "", subreddit: comment.subreddit ?? "")
             viewController.present(banVC, animated: true)
         }
         
@@ -92,7 +92,7 @@ extension ActionController {
                              completion: ((Action) -> Void)? = nil) {
         
         let approveAction = Action(title: "Approve", icon: "option-approve", style: .default) { _ in
-            RDKClient.shared.approveLink(link) { error in
+            RDKClient.shared().approve(link) { error in
                 if let error = error {
                     Holla.showStatus("Failed to approve post", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -102,7 +102,7 @@ extension ActionController {
         }
         
         let removeAction = Action(title: "Remove", icon: "option-trash", style: .destructive) { _ in
-            RDKClient.shared.removeLink(link, spam: false) { error in
+            RDKClient.shared().remove(link, spam: false) { error in
                 if let error = error {
                     Holla.showStatus("Failed to remove post", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -112,7 +112,7 @@ extension ActionController {
         }
         
         let spamAction = Action(title: "Mark Spam", icon: "option-spam", style: .destructive) { _ in
-            RDKClient.shared.removeLink(link, spam: true) { error in
+            RDKClient.shared().remove(link, spam: true) { error in
                 if let error = error {
                     Holla.showStatus("Failed to mark as spam", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -122,7 +122,7 @@ extension ActionController {
         }
         
         let stickyAction = Action(title: "Sticky", icon: "option-sticky", style: .default) { _ in
-            RDKClient.shared.distinguishThingWithFullName(link.fullname, status: 1) { error in
+            RDKClient.shared().distinguishThing(withFullName:link.fullName ?? "", status: 1) { error in
                 if let error = error {
                     Holla.showStatus("Failed to sticky post", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -132,7 +132,7 @@ extension ActionController {
         }
         
         let lockAction = Action(title: "Lock", icon: "option-lock", style: .default) { _ in
-            RDKClient.shared.lockLinkWithFullname(link.fullname) { error in
+            RDKClient.shared().lockLink(withFullname: link.fullName ?? "") { error in
                 if let error = error {
                     Holla.showStatus("Failed to lock post", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -147,7 +147,7 @@ extension ActionController {
         }
         
         let contestAction = Action(title: "Enable Contest Mode", icon: "option-contest-mode", style: .default) { _ in
-            RDKClient.shared.setContestModeForLinkWithFullname(link.fullname, contestMode: true) { error in
+            RDKClient.shared().setContestModeForLinkWithFullname(link.fullName ?? "", contestMode: true) { error in
                 if let error = error {
                     Holla.showStatus("Failed to enable contest mode", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -157,7 +157,7 @@ extension ActionController {
         }
         
         let banAction = Action(title: "Ban User", icon: "option-ban", style: .destructive) { _ in
-            let banVC = BanUserViewController(username: link.author, subreddit: link.subreddit)
+            let banVC = BanUserViewController(username: link.author ?? "", subreddit: link.subreddit ?? "")
             viewController.present(banVC, animated: true)
         }
         

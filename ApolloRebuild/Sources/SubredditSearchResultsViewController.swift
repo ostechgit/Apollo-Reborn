@@ -52,9 +52,9 @@ class SubredditSearchResultsViewController: UIViewController, UITableViewDataSou
         // Search Reddit for subreddits
         self.isLoading = true
         
-        RDKClient.shared.searchSubreddits(query: self.searchQuery, limit: 25) { [weak self] subreddits, error in
+        RDKClient.shared().searchSubreddits(query: self.searchQuery, limit: 25) { [weak self] subreddits, error in
             if let subreddits = subreddits {
-                self?.searchResults = subreddits
+                self?.searchResults = subreddits as? [RDKSubreddit] ?? []
             } else if let error = error {
                 print("Subreddit search failed: \(error.localizedDescription)")
             }

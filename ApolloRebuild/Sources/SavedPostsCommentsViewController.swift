@@ -41,9 +41,9 @@ class SavedPostsCommentsViewController: UIViewController, UITableViewDataSource,
         // Fetch saved items from Reddit
         self.isLoading = true
         
-        RDKClient.shared.savedLinks(pagination: nil) { [weak self] links, error in
+        RDKClient.shared().savedLinks(pagination: nil) { [weak self] links, pagination, error in
             if let links = links {
-                self?.savedItems = links
+                self?.savedItems = links as? [RDKLink] ?? []
             } else if let error = error {
                 print("Failed to load saved items: \(error.localizedDescription)")
             }

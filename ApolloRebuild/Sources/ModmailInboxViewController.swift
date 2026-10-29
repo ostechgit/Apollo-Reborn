@@ -41,9 +41,9 @@ class ModmailInboxViewController: UIViewController, UITableViewDataSource, UITab
         // Fetch modmail conversations from Reddit
         self.isLoading = true
         
-        RDKClient.shared.modmailConversations(pagination: nil) { [weak self] conversations, error in
+        RDKClient.shared().modmailConversations(pagination: nil) { [weak self] conversations, pagination, error in
             if let conversations = conversations {
-                self?.conversations = conversations
+                self?.conversations = conversations as? [RDKModmailConversation] ?? []
             } else if let error = error {
                 print("Failed to load modmail: \(error.localizedDescription)")
             }

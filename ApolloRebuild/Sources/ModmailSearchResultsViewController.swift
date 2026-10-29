@@ -52,9 +52,9 @@ class ModmailSearchResultsViewController: UIViewController, UITableViewDataSourc
         // Search modmail conversations
         self.isLoading = true
         
-        RDKClient.shared.searchModmail(query: self.searchQuery, limit: 25) { [weak self] conversations, error in
+        RDKClient.shared().searchModmail(query: self.searchQuery, limit: 25) { [weak self] conversations, error in
             if let conversations = conversations {
-                self?.searchResults = conversations
+                self?.searchResults = conversations as? [RDKModmailConversation] ?? []
             } else if let error = error {
                 print("Modmail search failed: \(error.localizedDescription)")
             }

@@ -28,7 +28,7 @@ class PostInfoNode: ASDisplayNode {
         if self.showsSubreddit, let subreddit = self.link.subreddit {
             parts.append("r/" + subreddit)
         }
-        parts.append("u/" + (self.link.author ?? "[deleted]"))
+        parts.append("u/" + (self.link.author ?? "" ?? "[deleted]"))
         parts.append(PostFormatting.relativeTime(since: self.link.createdUTC))
         if !self.link.selfPost, let domain = self.link.domain, !domain.isEmpty, !domain.hasPrefix("self.") {
             parts.append(domain)

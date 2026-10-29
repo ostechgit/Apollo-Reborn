@@ -52,9 +52,9 @@ class AllSubredditCommentsViewController: UIViewController, UITableViewDataSourc
         // Fetch all comments for the subreddit
         self.isLoading = true
         
-        RDKClient.shared.commentsInSubredditWithName(self.subredditName, category: .new, pagination: nil) { [weak self] comments, error in
+        RDKClient.shared().commentsInSubreddit(withName:self.subredditName, category: .new, pagination: nil) { [weak self] comments, pagination, error in
             if let comments = comments {
-                self?.comments = comments
+                self?.comments = comments as? [RDKComment] ?? []
             } else if let error = error {
                 print("Failed to load comments: \(error.localizedDescription)")
             }

@@ -52,9 +52,9 @@ class ModQueueViewController: UIViewController, UITableViewDataSource, UITableVi
         // Fetch mod queue items from Reddit
         self.isLoading = true
         
-        RDKClient.shared.moderationQueueForSubredditWithName(self.subredditName, pagination: nil) { [weak self] links, error in
+        RDKClient.shared().moderationQueueForSubreddit(withName: self.subredditName, pagination: nil) { [weak self] links, pagination, error in
             if let links = links {
-                self?.queueItems = links
+                self?.queueItems = links as? [RDKLink] ?? []
             } else if let error = error {
                 print("Failed to load mod queue: \(error.localizedDescription)")
             }

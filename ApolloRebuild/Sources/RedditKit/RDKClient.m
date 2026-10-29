@@ -1,6 +1,7 @@
 #import "RDKClient.h"
 #import "RDKObjectBuilder.h"
 #import "RDKResponseSerializer.h"
+#import "RDKSubreddit.h"
 
 // RDKClient - the Reddit API client (Apollo's RedditKit fork)
 // Reconstructed from apollo-base 1.15.11 binary analysis.
@@ -535,6 +536,203 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
 
 - (NSURLSessionDataTask *)unsaveThingWithFullName:(NSString *)fullName completion:(RDKCompletionBlock)completion {
     return [self accountTaskWithPath:@"api/unsave" parameters:@{@"id": fullName} completion:completion];
+}
+
+// MARK: - User content
+
+- (NSURLSessionDataTask *)subscribedSubredditsWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:@"subreddits/mine/subscriber" parameters:nil pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)inboxMessagesWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:@"messages/" parameters:nil pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)unreadInboxMessagesWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:@"messages/unread/" parameters:nil pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)savedLinksWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:@"user/me/saved/" parameters:nil pagination:pagination completion:completion];
+}
+
+// MARK: - Multireddits
+
+- (NSURLSessionDataTask *)multiredditWithName:(NSString *)name completion:(RDKObjectCompletionBlock)completion {
+    return [self getPath:[NSString stringWithFormat:@"api/multi/user/%@", name] parameters:nil completion:completion];
+}
+
+- (NSURLSessionDataTask *)linksInMultireddit:(NSString *)name category:(RDKSubredditCategory)category pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    NSString *path = [NSString stringWithFormat:@"m/%@/%@.json", name, RDKStringFromSubredditCategory(category)];
+    return [self listingTaskWithPath:path parameters:nil pagination:pagination completion:completion];
+}
+
+// MARK: - Moderation
+
+- (NSURLSessionDataTask *)moderationQueueForSubredditWithName:(NSString *)name pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:[NSString stringWithFormat:@"r/%@/about/modqueue", name] parameters:nil pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)moderationLogForSubredditWithName:(NSString *)name pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:[NSString stringWithFormat:@"r/%@/about/log", name] parameters:nil pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)approveLink:(RDKLink *)link completion:(RDKCompletionBlock)completion {
+    return [self accountTaskWithPath:@"api/approve" parameters:@{@"id": link.fullName} completion:completion];
+}
+
+- (NSURLSessionDataTask *)approveComment:(RDKComment *)comment completion:(RDKCompletionBlock)completion {
+    return [self accountTaskWithPath:@"api/approve" parameters:@{@"id": comment.fullName} completion:completion];
+}
+
+- (NSURLSessionDataTask *)removeLink:(RDKLink *)link spam:(BOOL)spam completion:(RDKCompletionBlock)completion {
+    NSMutableDictionary *params = [NSMutableDictionary dictionaryWithObject:link.fullName forKey:@"id"];
+    if (spam) {
+        params[@"spam"] = @"";
+    }
+    return [self accountTaskWithPath:@"api/remove" parameters:params completion:completion];
+}
+
+- (NSURLSessionDataTask *)removeComment:(RDKComment *)comment spam:(BOOL)spam completion:(RDKCompletionBlock)completion {
+    NSMutableDictionary *params = [NSMutableDictionary dictionaryWithObject:comment.fullName forKey:@"id"];
+    if (spam) {
+        params[@"spam"] = @"";
+    }
+    return [self accountTaskWithPath:@"api/remove" parameters:params completion:completion];
+}
+
+- (NSURLSessionDataTask *)lockLinkWithFullname:(NSString *)fullname completion:(RDKCompletionBlock)completion {
+    return [self accountTaskWithPath:@"api/lock" parameters:@{@"id": fullname} completion:completion];
+}
+
+- (NSURLSessionDataTask *)lockComment:(RDKComment *)comment completion:(RDKCompletionBlock)completion {
+    return [self accountTaskWithPath:@"api/lock" parameters:@{@"id": comment.fullName} completion:completion];
+}
+
+- (NSURLSessionDataTask *)distinguishComment:(RDKComment *)comment status:(NSInteger)status sticky:(BOOL)sticky completion:(RDKCompletionBlock)completion {
+    NSMutableDictionary *params = [NSMutableDictionary dictionaryWithObject:comment.fullName forKey:@"id"];
+    params[@"how"] = @(status) ? @"yes" : @"no";
+    if (sticky) {
+        params[@"sticky"] = @"true";
+    }
+    return [self accountTaskWithPath:@"api/distinguish" parameters:params completion:completion];
+}
+
+- (NSURLSessionDataTask *)distinguishThingWithFullName:(NSString *)name status:(NSInteger)status completion:(RDKCompletionBlock)completion {
+    NSMutableDictionary *params = [NSMutableDictionary dictionaryWithObject:name forKey:@"id"];
+    params[@"how"] = @(status) ? @"yes" : @"no";
+    return [self accountTaskWithPath:@"api/distinguish" parameters:params completion:completion];
+}
+
+- (NSURLSessionDataTask *)setContestModeForLinkWithFullname:(NSString *)fullname contestMode:(BOOL)contestMode completion:(RDKCompletionBlock)completion {
+    NSMutableDictionary *params = [NSMutableDictionary dictionaryWithObject:fullname forKey:@"id"];
+    params[@"is_contest"] = contestMode ? @"true" : @"false";
+    return [self accountTaskWithPath:@"api/contest" parameters:params completion:completion];
+}
+
+// MARK: - Modmail
+
+- (NSURLSessionDataTask *)modmailConversationsWithPagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    return [self listingTaskWithPath:@"api/modmail/conversations" parameters:nil pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)searchModmailWithQuery:(NSString *)query limit:(NSInteger)limit completion:(RDKArrayCompletionBlock)completion {
+    NSDictionary *params = @{@"q": query, @"limit": @(limit)};
+    return [self getPath:@"api/modmail/conversations" parameters:params completion:^(id response, NSError *error) {
+        if (response && [response isKindOfClass:[NSArray class]]) {
+            completion(response, nil);
+        } else {
+            completion(nil, error);
+        }
+    }];
+}
+
+- (NSURLSessionDataTask *)createModmailThreadInSubreddit:(NSString *)subreddit subject:(NSString *)subject message:(NSString *)message completion:(RDKCompletionBlock)completion {
+    NSDictionary *params = @{
+        @"subreddit": subreddit,
+        @"subject": subject,
+        @"message": message
+    };
+    return [self accountTaskWithPath:@"api/modmail" parameters:params completion:completion];
+}
+
+// MARK: - Reporting
+
+- (NSURLSessionDataTask *)createUserReportForThingWithFullname:(NSString *)fullname siteReason:(NSString *)reason completion:(RDKCompletionBlock)completion {
+    NSDictionary *params = @{
+        @"id": fullname,
+        @"type": @"site",
+        @"reason": reason
+    };
+    return [self accountTaskWithPath:@"api/report" parameters:params completion:completion];
+}
+
+- (NSURLSessionDataTask *)createUserReportForThingWithFullname:(NSString *)fullname subredditReason:(NSString *)reason completion:(RDKCompletionBlock)completion {
+    NSDictionary *params = @{
+        @"id": fullname,
+        @"type": @"subreddit",
+        @"reason": reason
+    };
+    return [self accountTaskWithPath:@"api/report" parameters:params completion:completion];
+}
+
+// MARK: - Search
+
+- (NSURLSessionDataTask *)searchWithQuery:(NSString *)query sort:(NSString *)sort time:(NSString *)time subreddit:(NSString *)subreddit pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    NSMutableDictionary *params = [NSMutableDictionary dictionaryWithObject:query forKey:@"q"];
+    if (sort) {
+        params[@"sort"] = sort;
+    }
+    if (time) {
+        params[@"t"] = time;
+    }
+    NSString *path = subreddit ? [NSString stringWithFormat:@"r/%@/search", subreddit] : @"search";
+    return [self listingTaskWithPath:path parameters:params pagination:pagination completion:completion];
+}
+
+- (NSURLSessionDataTask *)searchSubredditsWithQuery:(NSString *)query limit:(NSInteger)limit completion:(RDKArrayCompletionBlock)completion {
+    NSDictionary *params = @{
+        @"q": query,
+        @"limit": @(limit),
+        @"include_over_18": @"true"
+    };
+    return [self getPath:@"subreddits/search" parameters:params completion:^(id response, NSError *error) {
+        if (response && [response isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *data = response[@"data"];
+            NSArray *children = data[@"children"];
+            RDKObjectBuilder *builder = [RDKObjectBuilder objectBuilder];
+            NSMutableArray *subreddits = [NSMutableArray array];
+            for (NSDictionary *child in children) {
+                NSDictionary *subredditData = child[@"data"];
+                id subreddit = [builder objectFromJSON:subredditData];
+                if (subreddit) {
+                    [subreddits addObject:subreddit];
+                }
+            }
+            completion(subreddits, nil);
+        } else {
+            completion(nil, error);
+        }
+    }];
+}
+
+// MARK: - Convenience wrappers
+
+- (NSURLSessionDataTask *)voteOnLink:(RDKLink *)link direction:(RDKVoteDirection)direction completion:(RDKCompletionBlock)completion {
+    return [self voteOnThingWithFullName:link.fullName direction:direction completion:completion];
+}
+
+- (NSURLSessionDataTask *)saveLink:(RDKLink *)link completion:(RDKCompletionBlock)completion {
+    return [self saveThingWithFullName:link.fullName completion:completion];
+}
+
+- (NSURLSessionDataTask *)hideLink:(RDKLink *)link completion:(RDKCompletionBlock)completion {
+    return [self accountTaskWithPath:@"api/hide" parameters:@{@"id": link.fullName} completion:completion];
+}
+
+- (NSURLSessionDataTask *)commentsInSubredditWithName:(NSString *)name category:(RDKSubredditCategory)category pagination:(RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion {
+    NSString *path = [NSString stringWithFormat:@"r/%@/comments/%@.json", name, RDKStringFromSubredditCategory(category)];
+    return [self listingTaskWithPath:path parameters:nil pagination:pagination completion:completion];
 }
 
 @end

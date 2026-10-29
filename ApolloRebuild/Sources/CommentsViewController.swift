@@ -147,7 +147,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             let text = self.messageLabel.text ?? ""
             return { StatusMessageCellNode(text: text) }
         }
-        let linkAuthor = self.link.author
+        let linkAuthor = self.link.author ?? ""
         switch self.rows[indexPath.row] {
         case .comment(let comment, let depth):
             return { CommentCellNode(comment: comment, depth: depth, linkAuthor: linkAuthor) }

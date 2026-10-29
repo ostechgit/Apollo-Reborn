@@ -47,9 +47,9 @@ class SearchViewController: UIViewController, UITableViewDataSource, UITableView
         self.searchQuery = query
         self.isLoading = true
         
-        RDKClient.shared.search(query: query, sort: .relevance, time: .all, subreddit: nil, pagination: nil) { [weak self] links, error in
+        RDKClient.shared().search(query: query, sort: "relevance", time: "all", subreddit: nil, pagination: nil) { [weak self] links, pagination, error in
             if let links = links {
-                self?.searchResults = links
+                self?.searchResults = links as? [RDKLink] ?? []
             } else if let error = error {
                 print("Search failed: \(error.localizedDescription)")
             }

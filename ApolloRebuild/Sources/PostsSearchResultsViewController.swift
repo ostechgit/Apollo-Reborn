@@ -52,9 +52,9 @@ class PostsSearchResultsViewController: UIViewController, UITableViewDataSource,
         // Search Reddit for posts
         self.isLoading = true
         
-        RDKClient.shared.search(query: self.searchQuery, sort: .relevance, time: .all, subreddit: nil, pagination: nil) { [weak self] links, error in
+        RDKClient.shared().search(query: self.searchQuery, sort: "relevance", time: "all", subreddit: nil, pagination: nil) { [weak self] links, pagination, error in
             if let links = links {
-                self?.searchResults = links
+                self?.searchResults = links as? [RDKLink] ?? []
             } else if let error = error {
                 print("Search failed: \(error.localizedDescription)")
             }

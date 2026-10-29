@@ -5,8 +5,19 @@ import UIKit
 
 class FlairSelectorViewController: UIViewController {
     
+    let link: RDKLink
     private var flairs: [RDKFlairOption] = []
     private var selectedFlair: RDKFlairOption?
+    
+    init(link: RDKLink) {
+        self.link = link
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        self.link = RDKLink()
+        super.init(coder: coder)
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()

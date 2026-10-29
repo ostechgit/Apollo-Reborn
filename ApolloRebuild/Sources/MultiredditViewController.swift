@@ -52,22 +52,15 @@ class MultiredditViewController: UIViewController, UITableViewDataSource, UITabl
         // Fetch posts from the multireddit
         self.isLoading = true
         
-        RDKClient.shared.multiredditWithName(self.multiredditName) { [weak self] multireddit, error in
-            if let multireddit = multireddit {
-                // Load posts from the multireddit's subreddits
-                RDKClient.shared.linksInMultireddit(multireddit, category: .hot, pagination: nil) { links, error in
-                    if let links = links {
-                        self?.posts = links
-                    }
-                    
-                    self?.isLoading = false
-                    self?.tableView?.reloadData()
-                }
+        RDKClient.shared().links(inMultireddit: self.multiredditName, category: .hot, pagination: nil) { [weak self] links, pagination, error in
+            if let links = links {
+                self?.posts = links as? [RDKLink] ?? []
             } else if let error = error {
                 print("Failed to load multireddit: \(error.localizedDescription)")
-                self?.isLoading = false
-                self?.tableView?.reloadData()
             }
+            
+            self?.isLoading = false
+            self?.tableView?.reloadData()
         }
     }
     

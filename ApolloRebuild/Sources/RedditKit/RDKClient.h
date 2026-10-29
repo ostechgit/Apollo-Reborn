@@ -109,6 +109,55 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 - (nullable NSURLSessionDataTask *)saveThingWithFullName:(NSString *)fullName completion:(RDKCompletionBlock)completion;
 - (nullable NSURLSessionDataTask *)unsaveThingWithFullName:(NSString *)fullName completion:(RDKCompletionBlock)completion;
 
+// MARK: User content (account required)
+
+- (nullable NSURLSessionDataTask *)subscribedSubredditsWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(subscribedSubreddits(pagination:completion:));
+- (nullable NSURLSessionDataTask *)inboxMessagesWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(inboxMessages(pagination:completion:));
+- (nullable NSURLSessionDataTask *)unreadInboxMessagesWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(unreadInboxMessages(pagination:completion:));
+- (nullable NSURLSessionDataTask *)savedLinksWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(savedLinks(pagination:completion:));
+
+// MARK: Multireddits (account required)
+
+- (nullable NSURLSessionDataTask *)multiredditWithName:(NSString *)name completion:(RDKObjectCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)linksInMultireddit:(NSString *)name category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(links(inMultireddit:category:pagination:completion:));
+
+// MARK: Moderation (moderator required)
+
+- (nullable NSURLSessionDataTask *)moderationQueueForSubredditWithName:(NSString *)name pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)moderationLogForSubredditWithName:(NSString *)name pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)approveLink:(RDKLink *)link completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)approveComment:(RDKComment *)comment completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)removeLink:(RDKLink *)link spam:(BOOL)spam completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)removeComment:(RDKComment *)comment spam:(BOOL)spam completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)lockLinkWithFullname:(NSString *)fullname completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)lockComment:(RDKComment *)comment completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)distinguishComment:(RDKComment *)comment status:(NSInteger)status sticky:(BOOL)sticky completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)distinguishThingWithFullName:(NSString *)name status:(NSInteger)status completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)setContestModeForLinkWithFullname:(NSString *)fullname contestMode:(BOOL)contestMode completion:(RDKCompletionBlock)completion;
+
+// MARK: Modmail (moderator required)
+
+- (nullable NSURLSessionDataTask *)modmailConversationsWithPagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(modmailConversations(pagination:completion:));
+- (nullable NSURLSessionDataTask *)searchModmailWithQuery:(NSString *)query limit:(NSInteger)limit completion:(RDKArrayCompletionBlock)completion NS_SWIFT_NAME(searchModmail(query:limit:completion:));
+- (nullable NSURLSessionDataTask *)createModmailThreadInSubreddit:(NSString *)subreddit subject:(NSString *)subject message:(NSString *)message completion:(RDKCompletionBlock)completion NS_SWIFT_NAME(createModmailThread(subreddit:subject:message:completion:));
+
+// MARK: Reporting
+
+- (nullable NSURLSessionDataTask *)createUserReportForThingWithFullname:(NSString *)fullname siteReason:(NSString *)reason completion:(RDKCompletionBlock)completion;
+- (nullable NSURLSessionDataTask *)createUserReportForThingWithFullname:(NSString *)fullname subredditReason:(NSString *)reason completion:(RDKCompletionBlock)completion;
+
+// MARK: Search
+
+- (nullable NSURLSessionDataTask *)searchWithQuery:(NSString *)query sort:(NSString *)sort time:(nullable NSString *)time subreddit:(nullable NSString *)subreddit pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion NS_SWIFT_NAME(search(query:sort:time:subreddit:pagination:completion:));
+- (nullable NSURLSessionDataTask *)searchSubredditsWithQuery:(NSString *)query limit:(NSInteger)limit completion:(RDKArrayCompletionBlock)completion NS_SWIFT_NAME(searchSubreddits(query:limit:completion:));
+
+// MARK: Convenience wrappers
+
+- (nullable NSURLSessionDataTask *)voteOnLink:(RDKLink *)link direction:(RDKVoteDirection)direction completion:(RDKCompletionBlock)completion NS_SWIFT_NAME(voteOnLink(_:direction:completion:));
+- (nullable NSURLSessionDataTask *)saveLink:(RDKLink *)link completion:(RDKCompletionBlock)completion NS_SWIFT_NAME(saveLink(_:completion:));
+- (nullable NSURLSessionDataTask *)hideLink:(RDKLink *)link completion:(RDKCompletionBlock)completion NS_SWIFT_NAME(hideLink(_:completion:));
+- (nullable NSURLSessionDataTask *)commentsInSubredditWithName:(NSString *)name category:(RDKSubredditCategory)category pagination:(nullable RDKPagination *)pagination completion:(RDKListingCompletionBlock)completion;
+
 // MARK: Generic requests (paths are relative to APIBaseOAuthURL)
 
 - (nullable NSURLSessionDataTask *)getPath:(NSString *)path parameters:(nullable NSDictionary *)parameters completion:(RDKObjectCompletionBlock)completion;

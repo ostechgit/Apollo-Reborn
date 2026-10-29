@@ -52,9 +52,9 @@ class ModeratorLogsViewController: UIViewController, UITableViewDataSource, UITa
         // Fetch mod logs from Reddit
         self.isLoading = true
         
-        RDKClient.shared.moderationLogForSubredditWithName(self.subredditName, pagination: nil) { [weak self] logs, error in
+        RDKClient.shared().moderationLogForSubreddit(withName: self.subredditName, pagination: nil) { [weak self] logs, pagination, error in
             if let logs = logs {
-                self?.logs = logs
+                self?.logs = logs as? [RDKModeratorAction] ?? []
             } else if let error = error {
                 print("Failed to load mod logs: \(error.localizedDescription)")
             }

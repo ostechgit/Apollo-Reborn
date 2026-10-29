@@ -12,7 +12,7 @@ extension ActionController {
                                      fromViewController viewController: UIViewController) {
         
         let spamAction = Action(title: "Spam", icon: nil, style: .default) { _ in
-            RDKClient.shared.createUserReportForThingWithFullname(thingFullname, siteReason: "spam") { error in
+            RDKClient.shared().createUserReportForThing(withFullname:thingFullname, siteReason: "spam") { error in
                 if let error = error {
                     Holla.showStatus("Failed to report", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {
@@ -22,7 +22,7 @@ extension ActionController {
         }
         
         let offTopicAction = Action(title: "Off-topic", icon: nil, style: .default) { _ in
-            RDKClient.shared.createUserReportForThingWithFullname(thingFullname, siteReason: "offtopic") { error in
+            RDKClient.shared().createUserReportForThing(withFullname:thingFullname, siteReason: "offtopic") { error in
                 if let error = error {
                     Holla.showStatus("Failed to report", text: error.localizedDescription, duration: 3.0, savedItemFullName: nil, fromViewController: viewController, tappedBlock: nil)
                 } else {

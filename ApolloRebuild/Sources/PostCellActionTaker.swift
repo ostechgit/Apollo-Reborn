@@ -11,7 +11,7 @@ class PostCellActionTaker {
     
     func upvotePost(_ post: RDKLink, completion: @escaping (Bool) -> Void) {
         // Upvote the post on Reddit
-        RDKClient.shared.voteOnLink(post, direction: .up) { error in
+        RDKClient.shared().voteOnLink(post, direction: .up) { error in
             DispatchQueue.main.async {
                 completion(error == nil)
             }
@@ -20,7 +20,7 @@ class PostCellActionTaker {
     
     func downvotePost(_ post: RDKLink, completion: @escaping (Bool) -> Void) {
         // Downvote the post on Reddit
-        RDKClient.shared.voteOnLink(post, direction: .down) { error in
+        RDKClient.shared().voteOnLink(post, direction: .down) { error in
             DispatchQueue.main.async {
                 completion(error == nil)
             }
@@ -29,7 +29,7 @@ class PostCellActionTaker {
     
     func savePost(_ post: RDKLink, completion: @escaping (Bool) -> Void) {
         // Save the post
-        RDKClient.shared.saveLink(post) { error in
+        RDKClient.shared().saveLink(post) { error in
             DispatchQueue.main.async {
                 completion(error == nil)
             }
@@ -38,7 +38,7 @@ class PostCellActionTaker {
     
     func hidePost(_ post: RDKLink, completion: @escaping (Bool) -> Void) {
         // Hide the post (mark as read)
-        RDKClient.shared.hideLink(post) { error in
+        RDKClient.shared().hideLink(post) { error in
             DispatchQueue.main.async {
                 completion(error == nil)
             }

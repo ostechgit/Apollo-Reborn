@@ -6,7 +6,7 @@
 
 **RE Artifacts:** `~/Projects/Apollo-Source-Private/` - 53,316 decompiled functions, 7,806 recovered names, naming pipeline complete.
 
-## Status: Phase 1 & 2 Complete, Build Issues Remaining
+## Status: Phase 1 & 2 Complete, Build Succeeded
 
 Last updated: 2026-10-29
 
@@ -159,3 +159,4 @@ python3 tests/mock_reddit_server.py --port 8765
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.
 - **2026-10-29:** Phase 1 complete - implemented all 7 missing source files (43 functions total). Cross-referenced apollo-reborn tweak source for correct function signatures and action kinds.
 - **2026-10-29:** Phase 2 complete - fixed all 31 placeholder view controllers with real API calls. All utility/integration managers are now functional.
+- **2026-10-29:** Build succeeded! Added missing RDKClient convenience methods (subscribedSubreddits, inboxMessages, savedLinks, multiredditWithName, moderationQueue, moderationLog, modmailConversations, searchModmail, unreadInboxMessages, voteOnLink, saveLink, hideLink, approve, remove, lock, distinguish, setContestMode, createUserReport, search, searchSubreddits). Fixed Swift/ObjC bridging issues (sharedClient() → shared(), method name renames, optional unwrapping). Created stub view controllers for missing moderator action views.

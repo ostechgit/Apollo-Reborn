@@ -12,7 +12,7 @@ class AppStoreBuddy: NSObject {
     private var purchasedProductIDs: Set<String> = []
     private var productsCompletion: (([SKProduct]) -> Void)?
     
-    private init() {
+    override init() {
         // Load purchased product IDs
         let defaults = UserDefaults.standard
         if let saved = defaults.array(forKey: "purchasedProductIDs") as? [String] {
