@@ -6,9 +6,16 @@
 
 **RE Artifacts:** `~/Projects/Apollo-Source-Private/` - 53,316 decompiled functions, 7,806 recovered names, naming pipeline complete.
 
-## Status: Phase 1 & 2 Complete, Build Succeeded
+## Status: Phase 1 & 2 Complete, Build Succeeded, Crash Fixed
 
 Last updated: 2026-10-29
+
+**Latest progress (2026-10-29):**
+- Fixed crash in `RedditListViewController.sectionSubreddits()` - was using `UILocalizedIndexedCollation.section(for:collationStringSelector:)` with a string directly instead of an object+selector. Replaced with manual section determination by first character.
+- App now shows correct subreddit list structure: "Posts from subscriptions" (Home), FAVORITES, MULTIREDDITS, MODERATED sections.
+- Sections are empty because no user is logged in yet.
+- Compared with original Apollo app - the original shows posts feed on Home tab, subreddit list is accessed via slide-out menu (swipe from left edge).
+- **Next step:** Test with logged-in user to verify subscribed subreddits load correctly in alphabetical sections.
 
 ## Phase 1: Implement Missing Source Files (7 files, 43 functions)
 

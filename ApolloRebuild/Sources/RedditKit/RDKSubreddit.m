@@ -119,6 +119,7 @@
 + (NSDictionary<NSString *, NSString *> *)JSONKeyPathsByPropertyKey {
     return @{
         @"name": @"data.display_name",
+        @"display_name": @"data.display_name",
         @"title": @"data.title",
         @"URL": @"data.url",
         @"subredditDescription": @"data.public_description",
@@ -260,6 +261,17 @@
     }];
 }
 
++ (NSValueTransformer *)isEnrolledInNewModmailJSONTransformer {
+    return [MTLValueTransformer reversibleTransformerWithForwardBlock:^id(NSNumber *value) {
+        return value;} reverseBlock:^id(id value) {
+        // API doesn't always include this field; default to NO
+        if (value == nil) {
+            return @NO;
+        }
+        return @(((NSNumber *)value).boolValue);
+    }];
+}
+
 - (NSString *)description {
     return [NSString stringWithFormat:@"<RDKSubreddit: r/%@>", self.name];
 }
@@ -269,6 +281,15 @@
         return self.communityIconURL;
     }
     return self.iconImageURL;
+}
+
+// Handle missing BOOL fields from the API (e.g., is_enrolled_in_new_modmail)
+- (void)setNilValueForKey:(NSString *)key {
+    if ([key isEqualToString:@"isEnrolledInNewModmail"]) {
+        self.isEnrolledInNewModmail = NO;
+    } else {
+        [super setNilValueForKey:key];
+    }
 }
 
 @end

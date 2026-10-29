@@ -6,6 +6,7 @@
 #import "RedditKit/RDKPagination.h"
 #import "RedditKit/RDKComment.h"
 #import "RedditKit/RDKSubreddit.h"
+#import "RedditKit/RDKMultireddit.h"
 #import "RedditKit/RDKMessage.h"
 #import "RedditKit/RDKFlairOption.h"
 #import "RedditKit/RDKUser.h"
