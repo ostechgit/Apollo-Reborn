@@ -346,6 +346,15 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('Authorization', '').lower() == 'bearer mock-apponly':
                 return self.send_json({'message': 'Forbidden', 'error': 403}, 403)
             return self.send_json({})
+        if path == '/api/report':
+            form = {k: v[0] for k, v in parse_qs(raw).items()} if raw else {}
+            self.log_request_line({k: form.get(k) for k in ('thing_id', 'reason', 'site_reason', 'rule_reason')})
+            if not form.get('thing_id'):
+                return self.send_json({'json': {'errors': [['BAD_THING', 'thing_id required', 'thing_id']]}})
+            if form.get('reason') == 'site_reason_selected' and not form.get('site_reason'):
+                return self.send_json({'json': {'errors': [['BAD_REASON', 'site_reason required', 'site_reason']]}})
+            return self.send_json({})
+
         if path == '/api/comment':
             if self.headers.get('Authorization', '').lower() == 'bearer mock-apponly':
                 return self.send_json({'message': 'Forbidden', 'error': 403}, 403)

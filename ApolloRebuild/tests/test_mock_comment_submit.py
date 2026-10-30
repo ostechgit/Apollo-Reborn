@@ -82,6 +82,25 @@ class CommentSubmitTests(unittest.TestCase):
         self.assertEqual(empty[1]["data"]["children"], [])
         self.assertEqual(empty[0]["data"]["children"][0]["data"]["id"], "emptypost")
 
+    def test_report_payloads(self):
+        def post(form):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{self.server.server_port}/api/report",
+                data=urllib.parse.urlencode(form).encode(),
+                headers={"Authorization": "bearer mock-user"})
+            with urllib.request.urlopen(request) as response:
+                return json.load(response)
+
+        # Admin reason: reason holds the selector name, the sentence goes in site_reason.
+        self.assertEqual(post({"thing_id": "t1_x", "reason": "site_reason_selected",
+                               "site_reason": "This is spam"}), {})
+        # Subreddit rule: reason and rule_reason both carry the rule text.
+        self.assertEqual(post({"thing_id": "t1_x", "reason": "Keep it civil",
+                               "rule_reason": "Keep it civil"}), {})
+        errors = post({"thing_id": "t1_x", "reason": "site_reason_selected"})
+        self.assertEqual(errors["json"]["errors"][0][0], "BAD_REASON")
+        self.assertTrue(post({"reason": "site_reason_selected", "site_reason": "spam"})["json"]["errors"])
+
     def test_successful_writes_have_distinct_identity(self):
         first = self.submit("t3_mock", "first")["json"]["data"]["things"][0]["data"]
         second = self.submit("t3_mock", "second")["json"]["data"]["things"][0]["data"]

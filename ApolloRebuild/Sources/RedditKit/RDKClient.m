@@ -582,6 +582,42 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     }];
 }
 
+// MARK: - Reporting
+
+// Captured payloads (see RDKClient.h). The reason key holds the selector name
+// for admin reasons and the rule text for subreddit rules.
+- (NSURLSessionDataTask *)reportThingWithFullname:(NSString *)fullname siteReason:(NSString *)siteReason completion:(RDKCompletionBlock)completion {
+    if (!self.isAuthenticatedWithOAuth) {
+        completion([self errorWithCode:RDKClientErrorAuthenticationRequired description:@"Sign in to a Reddit account to do that."]);
+        return nil;
+    }
+    if (!fullname.length || !siteReason.length) {
+        completion([self errorWithCode:RDKClientErrorInvalidResponse description:@"A report needs a target and a reason."]);
+        return nil;
+    }
+    return [self accountTaskWithPath:@"api/report" parameters:@{
+        @"thing_id": fullname,
+        @"reason": @"site_reason_selected",
+        @"site_reason": siteReason,
+    } completion:completion];
+}
+
+- (NSURLSessionDataTask *)reportThingWithFullname:(NSString *)fullname ruleReason:(NSString *)ruleName completion:(RDKCompletionBlock)completion {
+    if (!self.isAuthenticatedWithOAuth) {
+        completion([self errorWithCode:RDKClientErrorAuthenticationRequired description:@"Sign in to a Reddit account to do that."]);
+        return nil;
+    }
+    if (!fullname.length || !ruleName.length) {
+        completion([self errorWithCode:RDKClientErrorInvalidResponse description:@"A report needs a target and a rule."]);
+        return nil;
+    }
+    return [self accountTaskWithPath:@"api/report" parameters:@{
+        @"thing_id": fullname,
+        @"reason": ruleName,
+        @"rule_reason": ruleName,
+    } completion:completion];
+}
+
 // MARK: - Voting and saving
 
 - (NSURLSessionDataTask *)accountTaskWithPath:(NSString *)path parameters:(NSDictionary *)parameters completion:(RDKCompletionBlock)completion {

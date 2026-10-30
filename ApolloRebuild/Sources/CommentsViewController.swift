@@ -328,7 +328,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self?.presentFindInComments()
         })
         items.append(self.action("Give Award", "option-gift-award") {})
-        items.append(self.action("Report", "option-report") {})
+        items.append(self.action("Report", "option-report") { [weak self] in
+            self?.presentReport(forLink: self?.link)
+        })
         items.append(self.action("Live Activity", "option-live-activity") {})
         items.append(self.action("Remind Me In\u{2026}", "option-remind-me-in") {})
         return items
@@ -966,9 +968,161 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self?.collapseToTop(comment)
         })
         items.append(self.action("Give Award", "option-gift-award") {})
-        items.append(self.action("Report", "option-report") {})
+        items.append(self.action("Report", "option-report") { [weak self] in
+            self?.presentReport(forComment: comment)
+        })
         items.append(self.action("Remind Me In\u{2026}", "option-remind-me-in") {})
         return items
+    }
+
+
+    // MARK: - Report
+
+    // Literals and payloads captured from Apollo 1.15.11 (see POSTS tracker):
+    // admin reasons go to api/report as reason="site_reason_selected" with the
+    // sentence in site_reason; copyright, trademark, self-harm and NetzDG open
+    // Reddit's web flows instead of posting.
+    private static let reportHeaders = ["copyright": "https://www.reddit.com/report",
+                                        "trademark": "https://reddithelp.com/en/submit-request/trademark-violation-form",
+                                        "selfharm": "https://www.reddit.com/report",
+                                        "netzdg": "https://www.reddit.com/report"]
+
+    private func presentReport(forComment comment: RDKComment) {
+        guard let fullname = comment.fullName else { return }
+        self.presentReportSheet(target: fullname, header: "Report comment")
+    }
+
+    private func presentReport(forLink link: RDKLink?) {
+        guard let fullname = link?.fullName else { return }
+        self.presentReportSheet(target: fullname, header: "Report post")
+    }
+
+    private func presentReportSheet(target: String, header: String) {
+        let sheet = UIAlertController(title: header, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Spam or Abuse", style: .default) { [weak self] _ in
+            self?.presentSpamOrAbuse(target: target)
+        })
+        sheet.addAction(UIAlertAction(title: "Other Issues", style: .default) { [weak self] _ in
+            self?.presentOtherIssues(target: target)
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    private func presentSpamOrAbuse(target: String) {
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Spam", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "This is spam")
+        })
+        sheet.addAction(UIAlertAction(title: "Abuse/Harassing", style: .default) { [weak self] _ in
+            self?.presentAbuse(target: target)
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    private func presentAbuse(target: String) {
+        let sheet = UIAlertController(title: "In what way?", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Targeted harassment", style: .default) { [weak self] _ in
+            self?.presentHarassmentTarget(target: target,
+                                          me: "It's targeted harassment at me",
+                                          someoneElse: "It's targeted harassment at someone else")
+        })
+        sheet.addAction(UIAlertAction(title: "Threats of Violence/Physical Harm", style: .default) { [weak self] _ in
+            self?.presentHarassmentTarget(target: target,
+                                          me: "It threatens violence or physical harm at me",
+                                          someoneElse: "It threatens violence or physical harm at someone else")
+        })
+        sheet.addAction(UIAlertAction(title: "Rude, Vulgar, or Offensive", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "It's rude, vulgar or offensive")
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    private func presentHarassmentTarget(target: String, me: String, someoneElse: String) {
+        let sheet = UIAlertController(title: "Who is this targeted at?", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "At Me", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: me)
+        })
+        sheet.addAction(UIAlertAction(title: "At Someone Else", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: someoneElse)
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    private func presentOtherIssues(target: String) {
+        let sheet = UIAlertController(title: "What issue?", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Infringes My Copyright", style: .default) { [weak self] _ in
+            self?.openReportWeb("copyright")
+        })
+        sheet.addAction(UIAlertAction(title: "Infringes My Trademark Rights", style: .default) { [weak self] _ in
+            self?.openReportWeb("trademark")
+        })
+        sheet.addAction(UIAlertAction(title: "Personal/Confidential Information", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "It's personal and confidential information")
+        })
+        sheet.addAction(UIAlertAction(title: "Suggestive Content with Minors", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "It's sexual or suggestive content involving minors")
+        })
+        sheet.addAction(UIAlertAction(title: "Involuntary Pornography", style: .default) { [weak self] _ in
+            self?.presentInvoluntaryPornography(target: target)
+        })
+        sheet.addAction(UIAlertAction(title: "Transaction for Prohibited Good/Service", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "It's a transaction for prohibited goods or services")
+        })
+        sheet.addAction(UIAlertAction(title: "Report Under NetzDG", style: .default) { [weak self] _ in
+            self?.openReportWeb("netzdg")
+        })
+        sheet.addAction(UIAlertAction(title: "Threatening Self-Harm or Suicide", style: .default) { [weak self] _ in
+            self?.openReportWeb("selfharm")
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    private func presentInvoluntaryPornography(target: String) {
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "I Appear In It", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "It's involuntary pornography and i appear in it")
+        })
+        sheet.addAction(UIAlertAction(title: "I Do Not Appear In It", style: .default) { [weak self] _ in
+            self?.sendReport(target: target, siteReason: "It's involuntary pornography and i do not appear in it")
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    /// Copyright, trademark, self-harm and NetzDG leave the app for Reddit's own
+    /// forms, which is what the original does (it builds report_redirect URLs).
+    private func openReportWeb(_ kind: String) {
+        guard let string = Self.reportHeaders[kind], let url = URL(string: string) else { return }
+        self.present(SFSafariViewController(url: url), animated: true)
+    }
+
+    private func sendReport(target: String, siteReason: String) {
+        RDKClient.shared().reportThing(withFullname: target, siteReason: siteReason) { [weak self] error in
+            guard let self = self else { return }
+            if let error = error {
+                let alert = UIAlertController(title: "Couldn\u{2019}t Report",
+                                              message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+            } else {
+                Holla.showStatus("Reported", text: "Thanks — Reddit received your report.",
+                                 fromViewController: self)
+            }
+        }
+    }
+
+    /// Action sheets need a source on iPad; the bar button or the view will do.
+    private func presentSheet(_ sheet: UIAlertController) {
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = self.view
+            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 1, height: 1)
+        }
+        self.present(sheet, animated: true)
     }
 
     // MARK: - Find in Comments
