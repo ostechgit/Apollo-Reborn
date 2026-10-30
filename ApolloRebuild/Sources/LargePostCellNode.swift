@@ -101,7 +101,18 @@ class LargePostOptionButtonsNode: ASDisplayNode {
 //
 // The read (visited) state dims the title and the info rows but never the media.
 
-class LargePostCellNode: ASCellNode {
+class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
+
+    var onLinkTapped: ((URL) -> Void)?
+
+    func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
+                  value: Any, at point: CGPoint, textRange: NSRange) {
+        if let url = value as? URL {
+            self.onLinkTapped?(url)
+        } else if let string = value as? String, let url = URL(string: string) {
+            self.onLinkTapped?(url)
+        }
+    }
 
     var link: RDKLink
     let inSpecificSubreddit: Bool
@@ -151,6 +162,11 @@ class LargePostCellNode: ASCellNode {
         self.backgroundColor = .systemBackground
 
         self.titleNode.maximumNumberOfLines = 0
+        if isInsideComments {
+            self.selfTextNode.delegate = self
+            self.selfTextNode.linkAttributeNames = [NSAttributedString.Key.link.rawValue]
+            self.selfTextNode.isUserInteractionEnabled = true
+        }
         self.selfTextNode.maximumNumberOfLines = isInsideComments ? 0 : 3
         self.selfTextNode.truncationMode = .byTruncatingTail
 
@@ -277,12 +293,15 @@ class LargePostCellNode: ASCellNode {
             children.append(media)
         }
 
-        // ⋯ ↑ ↓ sit on the right, vertically centred on the two info rows.
+        // The feed has a ⋯/vote cluster; the original detail header instead
+        // owns CommentsQuickBarNode (Headers/Swift/CommentsHeaderCellNode.swift).
         let spacer = ASLayoutSpec()
         spacer.style.flexGrow = 1
+        var infoChildren: [ASLayoutElement] = [self.postInfoNode, spacer]
+        if !self.isInsideComments { infoChildren.append(self.optionButtonsNode) }
         let infoRow = ASStackLayoutSpec(direction: .horizontal, spacing: 8,
                                         justifyContent: .start, alignItems: .center,
-                                        children: [self.postInfoNode, spacer, self.optionButtonsNode])
+                                        children: infoChildren)
         self.postInfoNode.style.flexShrink = 1
 
         let info = ASInsetLayoutSpec(insets: UIEdgeInsets(top: 0, left: horizontalInset, bottom: 12, right: horizontalInset),

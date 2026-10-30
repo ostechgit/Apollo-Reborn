@@ -50,6 +50,7 @@ class RichMediaNode: ASControlNode {
         self.cardNode = isRedditMedia ? nil : LinkButtonNode(link: link)
         super.init()
         self.automaticallyManagesSubnodes = true
+        self.cardNode?.isUserInteractionEnabled = false
 
         self.imageNode.contentMode = .scaleAspectFill
         self.imageNode.clipsToBounds = true

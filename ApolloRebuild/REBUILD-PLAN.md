@@ -288,6 +288,35 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
   do not treat host passes as screen parity. Continue-thread navigation, loading
   feedback, deleted-reply state, and collapsed badge counting remain open.
 
+### Stock-reference and functional wiring pass
+
+- Clean stock comparator prepared separately as `com.omarsalam.ApolloStockReference`.
+  Original 1.15.11/285 main UUID `9E4EC7AC-92B8-3A03-856C-CE3664D76B97`, SDK16.2,
+  cryptid0; no tweak dependencies or runtime Reborn/Substrate mappings. Existing
+  app containers untouched. Stock feed menu is a bottom sheet, not UIMenu.
+  Feed/account did not populate; stock comment avatars/detail still unverified.
+- Comment avatars and glass/menu styling previously measured on injected
+  comparator are NOT established as stock parity. Do not tune fonts/colors in
+  this pass. Native header fields justify omitting feed's duplicate vote cluster.
+- Wired header delegate, author/subreddit menus, comment author and markdown
+  links; added generation guards/cancellation and coherent failure snapshots,
+  title/menu refresh, basic gallery page indexing and media/browser entry.
+- PID92418 device check passed: no duplicate cluster, post/comment author and
+  subreddit navigation, article browser opening/dismissal, Save/Unsave UI round
+  trip (original unsaved state restored). No votes/public replies performed.
+  Post-author destination was empty; navigation alone verified for that profile.
+- Explicitly untested: markdown link tap, image/gallery/video viewers, save
+  persistence/server refetch. Follow-up adds action-strip accessibility labels.
+- Initial sort is `.default`, not necessarily Top despite fallback icon. Use
+  response suggestedSort for selected menu state where supplied; do not guess
+  server choice when absent. Explicit New selection/checkmark verified then Top
+  restored. Native default-sort policy still needs investigation.
+- Host tree tests pass; model suite79/79. Two archives succeeded. Changes after
+  PID92418 need another archive/runtime pass. Clean-stock evidence report under
+  approved temp `apollo-stock-reference-20261030/REPORT.md`; rebuild action
+  evidence: `rebuild-detail`, `rebuild-browser`, `rebuild-sort-new-menu`,
+  `rebuild-save-restored-menu` PNGs. Reply remains a non-submitting stub.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

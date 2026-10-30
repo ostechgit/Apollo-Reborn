@@ -126,7 +126,21 @@ enum CommentBody {
 // deleted/moderator banners, the "show post context" row, and the swipe
 // gestures that vote/collapse a comment.
 
-class CommentCellNode: ASCellNode {
+class CommentCellNode: ASCellNode, ASTextNodeDelegate {
+
+    var onLinkTapped: ((URL) -> Void)?
+    var onAuthorTapped: ((String) -> Void)?
+
+    func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
+                  value: Any, at point: CGPoint, textRange: NSRange) {
+        if textNode === self.authorNode {
+            if let author = self.comment.author, author != "[deleted]" { self.onAuthorTapped?(author) }
+        } else if let url = value as? URL {
+            self.onLinkTapped?(url)
+        } else if let string = value as? String, let url = URL(string: string) {
+            self.onLinkTapped?(url)
+        }
+    }
 
     let comment: RDKComment
     let depth: Int
@@ -213,12 +227,19 @@ class CommentCellNode: ASCellNode {
             self.avatarNode.url = url
         }
 
+        self.bodyNode.delegate = self
+        self.bodyNode.linkAttributeNames = [NSAttributedString.Key.link.rawValue]
+        self.bodyNode.isUserInteractionEnabled = true
+        self.authorNode.delegate = self
+        self.authorNode.linkAttributeNames = [NSAttributedString.Key.link.rawValue]
+        self.authorNode.isUserInteractionEnabled = true
         self.authorNode.maximumNumberOfLines = 1
         self.authorNode.truncationMode = .byTruncatingTail
         self.authorNode.style.flexShrink = 1
         self.authorNode.attributedText = NSAttributedString(string: comment.author ?? "[deleted]", attributes: [
             .font: UIFont.systemFont(ofSize: 15, weight: .semibold),
-            .foregroundColor: self.authorColor
+            .foregroundColor: self.authorColor,
+            .link: comment.author ?? ""
         ])
 
         if let flair = comment.authorFlairPlaintext, !flair.isEmpty {

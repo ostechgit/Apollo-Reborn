@@ -32,7 +32,7 @@ class CommentsQuickBarNode: ASDisplayNode {
     private let shareNode = ASButtonNode()
 
     private var voteStatus: RDKVoteStatus
-    private let isSaved: Bool
+    private var isSaved: Bool
 
     init(voteStatus: RDKVoteStatus, isSaved: Bool) {
         self.voteStatus = voteStatus
@@ -40,6 +40,14 @@ class CommentsQuickBarNode: ASDisplayNode {
         super.init()
         self.automaticallyManagesSubnodes = true
         self.backgroundColor = .systemBackground
+
+        for (node, label) in [(self.upvoteNode, "Upvote"), (self.downvoteNode, "Downvote"),
+                              (self.saveNode, isSaved ? "Unsave" : "Save"),
+                              (self.replyNode, "Reply"), (self.shareNode, "Share")] {
+            node.isAccessibilityElement = true
+            node.accessibilityLabel = label
+            node.accessibilityTraits = .button
+        }
 
         self.upvoteNode.addTarget(self, action: #selector(upvoteTapped), forControlEvents: .touchUpInside)
         self.downvoteNode.addTarget(self, action: #selector(downvoteTapped), forControlEvents: .touchUpInside)
@@ -64,6 +72,8 @@ class CommentsQuickBarNode: ASDisplayNode {
     }
 
     func setSaved(_ saved: Bool) {
+        self.isSaved = saved
+        self.saveNode.accessibilityLabel = saved ? "Unsave" : "Save"
         // Saving swaps the hollow bookmark for the solid "option-unsave".
         self.saveNode.setImage(self.icon(saved ? "option-unsave" : "option-save", tint: self.accent),
                                for: .normal)

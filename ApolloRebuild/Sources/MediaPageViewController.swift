@@ -1,60 +1,38 @@
 import UIKit
 
-// MediaPageViewController - displays media in a page view controller
-// Reconstructed from apollo-base 1.15.11 binary analysis.
+// Basic reachable gallery paging. Native viewer transitions, zoom, animation,
+// and sharing remain separate parity work; this is not a complete reconstruction.
+class MediaPageViewController: UIPageViewController, UIPageViewControllerDataSource {
+    private let mediaURLs: [URL]
+    private var pages: [MediaViewerController] = []
 
-class MediaPageViewController: UIPageViewController {
-    
-    private var mediaURLs: [URL] = []
-    private var currentIndex: Int = 0
-    
     init(mediaURLs: [URL]) {
         self.mediaURLs = mediaURLs
         super.init(transitionStyle: .scroll, navigationOrientation: .horizontal)
     }
-    
+
     required init?(coder: NSCoder) {
-        super.init(coder: coder)
+        fatalError("init(coder:) has not been implemented")
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+        self.pages = self.mediaURLs.map { MediaViewerController(mediaURL: $0) }
         self.dataSource = self
-        self.delegate = self
-        
-        if !self.mediaURLs.isEmpty {
-            let firstVC = MediaViewerController(mediaURL: self.mediaURLs[0])
-            self.setViewControllers([firstVC], direction: .forward, animated: false)
+        if let first = self.pages.first {
+            self.setViewControllers([first], direction: .forward, animated: false)
         }
     }
-}
 
-extension MediaPageViewController: UIPageViewControllerDataSource {
-    func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
-        if let currentVC = viewController as? MediaViewerController {
-            // Find index of current VC
-            for (index, url) in self.mediaURLs.enumerated() {
-                if index > 0 {
-                    return MediaViewerController(mediaURL: self.mediaURLs[index - 1])
-                }
-            }
-        }
-        return nil
+    func pageViewController(_ pageViewController: UIPageViewController,
+                            viewControllerBefore viewController: UIViewController) -> UIViewController? {
+        guard let index = self.pages.firstIndex(where: { $0 === viewController }), index > 0 else { return nil }
+        return self.pages[index - 1]
     }
-    
-    func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
-        if let currentVC = viewController as? MediaViewerController {
-            // Find index of current VC
-            for (index, url) in self.mediaURLs.enumerated() {
-                if index < self.mediaURLs.count - 1 {
-                    return MediaViewerController(mediaURL: self.mediaURLs[index + 1])
-                }
-            }
-        }
-        return nil
-    }
-}
 
-extension MediaPageViewController: UIPageViewControllerDelegate {
+    func pageViewController(_ pageViewController: UIPageViewController,
+                            viewControllerAfter viewController: UIViewController) -> UIViewController? {
+        guard let index = self.pages.firstIndex(where: { $0 === viewController }), index + 1 < self.pages.count else { return nil }
+        return self.pages[index + 1]
+    }
 }

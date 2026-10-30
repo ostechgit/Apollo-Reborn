@@ -1,5 +1,61 @@
 import UIKit
 import AsyncDisplayKit
+import SafariServices
+import AVKit
+
+// Header actions share the same controller operations as the post menu. This
+// deliberately does not reuse the feed's gallery action (which opens comments).
+extension CommentsViewController: PostCellActionDelegate {
+    func postCell(_ cell: LargePostCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink) {
+        self.vote(direction)
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapSaveOn link: RDKLink) {
+        self.toggleSave()
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapSubreddit named: String) {
+        self.openSubreddit(named)
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapAuthor named: String) {
+        self.openAuthor(named)
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapMoreOptionsOn link: RDKLink) {
+        // The detail header has its action menu in the navigation bar.
+    }
+
+    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
+        let mediaLink = link.crosspostParent ?? link
+        let viewer: UIViewController
+        if mediaLink.isGallery, let images = mediaLink.galleryImages {
+            let urls = images.compactMap { URL(string: $0.url) }
+            guard !urls.isEmpty else { return }
+            viewer = MediaPageViewController(mediaURLs: urls)
+        } else if mediaLink.isVideo, let url = mediaLink.redditVideoURL.flatMap(URL.init(string:)) {
+            let player = AVPlayerViewController()
+            player.player = AVPlayer(url: url)
+            self.present(player, animated: true) { player.player?.play() }
+            return
+        } else if mediaLink.isImageLink || mediaLink.domain?.hasSuffix("redd.it") == true {
+            let url = mediaLink.isImageLink ? mediaLink.url.flatMap(URL.init(string:))
+                : mediaLink.previewImages?.last?.url.flatMap(URL.init(string:))
+            guard let url = url else { return }
+            viewer = MediaViewerController(mediaURL: url)
+        } else if let url = mediaLink.url.flatMap(URL.init(string:)),
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            self.present(SFSafariViewController(url: url), animated: true)
+            return
+        } else {
+            return
+        }
+        let navigation = UINavigationController(rootViewController: viewer)
+        viewer.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
+            primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
+        self.present(navigation, animated: true)
+    }
+}
 
 // CommentsViewController - a post and its comment thread.
 // Reconstructed from apollo-base 1.15.11 binary analysis
@@ -38,6 +94,13 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Kept so the sort button can draw the selected sort's own glyph, which is
     /// what the original does (its glyph is `option-sort-<sort>`).
     private var sortItem: UIBarButtonItem?
+    private var moreItem: UIBarButtonItem?
+    private var loadGeneration = 0
+    private var threadTask: URLSessionDataTask?
+
+    deinit {
+        self.threadTask?.cancel()
+    }
 
     /// Apollo's floating "jump to the next comment" button, bottom right.
     private let jumpButton = UIButton(type: .custom)
@@ -45,6 +108,23 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     init(link: RDKLink) {
         self.link = link
         super.init(nibName: nil, bundle: nil)
+    }
+
+    /// `.default` delegates to Reddit; do not show a misleading Top selection
+    /// before an explicit sort is chosen. A suggested sort identifies the server
+    /// choice when supplied. Otherwise no checkmark is more honest than a guess.
+    private var displayedSort: RDKCommentSortingMethod {
+        guard self.commentSort == .default else { return self.commentSort }
+        switch self.link.suggestedSort {
+        case "top": return .top
+        case "confidence", "best": return .best
+        case "new": return .new
+        case "controversial": return .controversial
+        case "old": return .old
+        case "qa": return .QA
+        case "random": return .random
+        default: return .default
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -93,7 +173,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
         // The original's sort button draws the lines with an up arrow
         // ("option-sort-top"), not the speech-bubble glyph.
-        let sort = UIBarButtonItem(image: ApolloAssets.image(named: CommentsViewController.sortGlyph(self.commentSort)),
+        let sort = UIBarButtonItem(image: ApolloAssets.image(named: CommentsViewController.sortGlyph(self.displayedSort)),
                                    menu: self.sortMenu())
         sort.accessibilityLabel = "Sort Comments"
         self.sortItem = sort
@@ -101,6 +181,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         let more = UIBarButtonItem(image: ApolloAssets.image(named: "option-more"),
                                    menu: self.commentsMenu())
         more.accessibilityLabel = "Comment Options"
+        self.moreItem = more
 
         self.navigationItem.rightBarButtonItems = [more, sort]
     }
@@ -152,7 +233,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             ("Live Update", .live, "option-sort-live"),
         ]
         let actions = options.map { title, method, icon in
-            UIAction(title: title, image: ApolloAssets.image(named: icon)) { [weak self] _ in
+            UIAction(title: title, image: ApolloAssets.image(named: icon),
+                     state: self.displayedSort == method ? .on : .off) { [weak self] _ in
                 guard let self = self else { return }
                 self.commentSort = method
                 // The button draws the chosen sort's glyph from now on.
@@ -160,8 +242,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 self.collapsedComments.removeAll()
                 // Live Update is a Reddit-side comment stream; until that's
                 // wired up it loads the thread the same way the others do.
-                self.apply([])
-                self.loadComments()
+                self.loadComments(clearExisting: true)
             }
         }
         return UIMenu(title: "Sort by\u{2026}", children: actions)
@@ -190,13 +271,13 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self?.replyToPost()
         })
         if !author.isEmpty {
-            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { _ in
-                // The Author screen isn't built yet.
+            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { [weak self] _ in
+                self?.openAuthor(author)
             })
         }
         if !subreddit.isEmpty {
-            children.append(UIAction(title: subreddit, image: ApolloAssets.image(named: "option-subreddit")) { _ in
-                // The subreddit feed is reached from the subreddit list.
+            children.append(UIAction(title: subreddit, image: ApolloAssets.image(named: "option-subreddit")) { [weak self] _ in
+                self?.openSubreddit(subreddit)
             })
         }
         children.append(UIAction(title: "Collapse Child Comments",
@@ -297,7 +378,21 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Voting or saving redraws the header's info row and quick bar: the cell
     /// is rebuilt from the same link, so its buttons pick up the new state.
     private func reloadHeader() {
+        self.moreItem?.menu = self.commentsMenu()
         self.tableNode.reloadRows(at: [IndexPath(row: 0, section: 0)], with: .none)
+    }
+
+    private func openLink(_ url: URL) {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+        self.present(SFSafariViewController(url: url), animated: true)
+    }
+
+    private func openAuthor(_ username: String) {
+        self.navigationController?.pushViewController(ProfileViewController(username: username), animated: true)
+    }
+
+    private func openSubreddit(_ name: String) {
+        self.navigationController?.pushViewController(PostsViewController(postsType: .subreddit(name)), animated: true)
     }
 
     // MARK: - Jump button
@@ -337,36 +432,37 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     // MARK: - Loading
 
-    private func loadComments() {
-        LogBuddy.debug("Comments: load \(self.link.identifier ?? "nil") sort=\(self.commentSort.rawValue)")
-        RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
-                                           commentSort: self.commentSort,
-                                           pagination: nil) { [weak self] link, comments, error in
-            guard let self = self else { return }
-            if let error = error {
-                LogBuddy.error("CommentsViewController: thread failed (\((error as NSError).code))")
-                self.rows = []
-                self.tableNode.reloadData()
-                return
-            }
-            if let link = link {
-                // Fresher score/vote state than the feed's copy
-                self.link = link
-            }
-            let rows = CommentsViewController.flatten(comments ?? [], depth: 0)
-            self.apply(rows)
-        }
-    }
-
-    /// Applies a freshly flattened thread to the table. The reload runs on the
-    /// main queue because Texture only commits a change set from the main
-    /// thread, and the network completion may land on another queue.
-    private func apply(_ rows: [Row]) {
-        DispatchQueue.main.async {
-            self.tree = rows
+    private func loadComments(clearExisting: Bool = false) {
+        self.loadGeneration += 1
+        let generation = self.loadGeneration
+        self.threadTask?.cancel()
+        self.expandingMore.removeAll()
+        if clearExisting {
+            self.tree = []
             self.rebuildRows()
             self.tableNode.reloadData()
-            LogBuddy.debug("Comments: reloaded \(self.rows.count) of \(rows.count) rows")
+        }
+        self.sortItem?.menu = self.sortMenu()
+        LogBuddy.debug("Comments: load \(self.link.identifier ?? "nil") sort=\(self.commentSort.rawValue)")
+        self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
+                                           commentSort: self.commentSort,
+                                           pagination: nil) { [weak self] link, comments, error in
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.loadGeneration else { return }
+                self.threadTask = nil
+                if let error = error {
+                    // Keep one coherent last-good snapshot on failure. Clearing
+                    // only visible rows allowed collapse to resurrect old data.
+                    LogBuddy.error("CommentsViewController: thread failed (\((error as NSError).code))")
+                    return
+                }
+                if let link = link { self.link = link }
+                self.tree = Self.flatten(comments ?? [], depth: 0)
+                self.rebuildRows()
+                self.configureNavigationBar()
+                self.tableNode.reloadData()
+                LogBuddy.debug("Comments: loaded \(self.rows.count) visible rows")
+            }
         }
     }
 
@@ -481,10 +577,11 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     private func expand(_ more: RDKMoreComments) {
         guard !more.isContinueThread, let key = more.fullName, !self.expandingMore.contains(key) else { return }
         self.expandingMore.insert(key)
+        let generation = self.loadGeneration
 
         RDKClient.shared().moreComments(more, for: self.link, sort: self.commentSort) { [weak self] collection, error in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, generation == self.loadGeneration else { return }
                 self.expandingMore.remove(key)
                 // Work against the full tree, not the visible snapshot. The
                 // reader may have collapsed the parent or changed sort while
@@ -563,6 +660,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             let link = self.link
             return { [weak self] in
                 let cell = LargePostCellNode(link: link, isInsideComments: true)
+                cell.actionDelegate = self
+                cell.onLinkTapped = { [weak self] url in self?.openLink(url) }
                 cell.onReplyTapped = { [weak self] in self?.replyToPost() }
                 cell.onShareTapped = { [weak self] in self?.share() }
                 return cell
@@ -578,6 +677,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 let cell = CommentCellNode(comment: comment, depth: depth, postAuthor: postAuthor,
                                            isCollapsed: collapsed, hiddenReplyCount: hidden)
                 cell.menu = menu
+                cell.onLinkTapped = { [weak self] url in self?.openLink(url) }
+                cell.onAuthorTapped = { [weak self] username in self?.openAuthor(username) }
                 return cell
             }
         case .more(let more, let depth):
@@ -605,8 +706,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self?.replyToComment(comment)
         })
         if let author = comment.author, !author.isEmpty {
-            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { _ in
-                // The Author screen isn't built yet.
+            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { [weak self] _ in
+                self?.openAuthor(author)
             })
         }
         children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { _ in })
