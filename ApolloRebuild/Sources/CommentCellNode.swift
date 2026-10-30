@@ -151,6 +151,12 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate {
     /// The comment's own ••• menu. Attached to the cell's button so iOS draws
     /// the same sheet the nav-bar menus use (the original opens that same
     /// style of action menu from a comment's dots).
+    /// Called when the reader taps the cell's ••• . The screen presents the
+    /// native action sheet (Apollo's `ActionController`), not a UIMenu.
+    var onMoreTapped: (() -> Void)? {
+        didSet { self.applyMenu() }
+    }
+
     var menu: UIMenu? {
         didSet { self.applyMenu() }
     }
@@ -337,6 +343,16 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate {
         guard let button = self.moreOptionsNode.view as? UIButton else { return }
         button.menu = self.menu
         button.showsMenuAsPrimaryAction = self.menu != nil
+        // The sheet path replaces the popover entirely.
+        if self.onMoreTapped != nil {
+            button.menu = nil
+            button.showsMenuAsPrimaryAction = false
+            button.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
+        }
+    }
+
+    @objc private func moreTapped() {
+        self.onMoreTapped?()
     }
 
     // MARK: - Colours

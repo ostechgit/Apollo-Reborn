@@ -200,7 +200,10 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.sortItem = sort
 
         let more = UIBarButtonItem(image: ApolloAssets.image(named: "option-more"),
-                                   menu: self.commentsMenu())
+                                   primaryAction: UIAction { [weak self] _ in
+            guard let self = self else { return }
+            self.presentActions(self.postActions())
+        })
         more.accessibilityLabel = "Comment Options"
         self.moreItem = more
 
@@ -269,61 +272,56 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         return UIMenu(title: "Sort by\u{2026}", children: actions)
     }
 
-    /// The Post-detail ⋯ menu: the rows the original's comments nav bar shows,
-    /// in its order — upvote, downvote, save, reply, author, subreddit,
-    /// collapse child comments, select text, share, share as image, crosspost,
-    /// find in comments, give award, report, live activity, remind me.
-    private func commentsMenu() -> UIMenu {
+
+    // MARK: - Action sheets
+
+    /// Native presents its own `ActionController` sheet rather than a `UIMenu`
+    /// popover (0x1007a05f0 / 0x1004ca9dc). Both ⋯ menus route through here.
+    private func presentActions(_ items: [ApolloActionSheetItem]) {
+        let sheet = ApolloActionSheetViewController(items: items)
+        self.present(sheet, animated: true)
+    }
+
+    private func action(_ title: String, _ image: String?, accessory: ApolloActionSheetItem.Accessory = .none,
+                        _ handler: @escaping () -> Void) -> ApolloActionSheetItem {
+        ApolloActionSheetItem(title: title, image: image.flatMap(ApolloAssets.image(named:)),
+                              accessory: accessory, handler: handler)
+    }
+
+    /// Rows the original's comments nav-bar sheet shows, in its order.
+    /// Unimplemented rows are kept so the list matches, but stay inert.
+    private func postActions() -> [ApolloActionSheetItem] {
         let author = self.link.author ?? ""
         let subreddit = self.link.subreddit ?? ""
-        var children: [UIMenuElement] = []
-
-        children.append(UIAction(title: "Upvote", image: ApolloAssets.image(named: "option-upvote")) { [weak self] _ in
-            self?.vote(.up)
-        })
-        children.append(UIAction(title: "Downvote", image: ApolloAssets.image(named: "option-downvote")) { [weak self] _ in
-            self?.vote(.down)
-        })
-        children.append(UIAction(title: self.link.saved ? "Unsave" : "Save",
-                                 image: ApolloAssets.image(named: self.link.saved ? "option-unsave" : "option-save")) { [weak self] _ in
+        var items: [ApolloActionSheetItem] = []
+        items.append(self.action("Upvote", "option-upvote") { [weak self] in self?.vote(.up) })
+        items.append(self.action("Downvote", "option-downvote") { [weak self] in self?.vote(.down) })
+        items.append(self.action(self.link.saved ? "Unsave" : "Save",
+                                 self.link.saved ? "option-unsave" : "option-save") { [weak self] in
             self?.toggleSave()
         })
-        children.append(UIAction(title: "Reply", image: ApolloAssets.image(named: "option-reply")) { [weak self] _ in
-            self?.replyToPost()
-        })
+        items.append(self.action("Reply", "option-reply") { [weak self] in self?.replyToPost() })
         if !author.isEmpty {
-            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { [weak self] _ in
-                self?.openAuthor(author)
-            })
+            items.append(self.action(author, "option-author") { [weak self] in self?.openAuthor(author) })
         }
         if !subreddit.isEmpty {
-            children.append(UIAction(title: subreddit, image: ApolloAssets.image(named: "option-subreddit")) { [weak self] _ in
-                self?.openSubreddit(subreddit)
-            })
+            items.append(self.action(subreddit, "option-subreddit") { [weak self] in self?.openSubreddit(subreddit) })
         }
-        children.append(UIAction(title: "Collapse Child Comments",
-                                 image: ApolloAssets.image(named: "option-collapse-child-comments")) { [weak self] _ in
+        items.append(self.action("Collapse Child Comments", "option-collapse-child-comments") { [weak self] in
             self?.collapseAllTopLevelComments()
         })
-        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { [weak self] _ in
-            self?.selectTextForPost()
-        })
-        children.append(UIAction(title: "Share", image: ApolloAssets.image(named: "option-share")) { [weak self] _ in
-            self?.share()
-        })
-        children.append(UIAction(title: "Share as Image\u{2026}",
-                                 image: ApolloAssets.image(named: "option-share-as-image")) { _ in })
-        children.append(UIAction(title: "Crosspost", image: ApolloAssets.image(named: "option-crosspost")) { _ in })
-        children.append(UIAction(title: "Find in Comments", image: ApolloAssets.image(named: "option-search")) { [weak self] _ in
+        items.append(self.action("Select Text", "option-select-mode") { [weak self] in self?.selectTextForPost() })
+        items.append(self.action("Share", "option-share") { [weak self] in self?.share() })
+        items.append(self.action("Share as Image\u{2026}", "option-share-as-image") {})
+        items.append(self.action("Crosspost", "option-crosspost") {})
+        items.append(self.action("Find in Comments", "option-search") { [weak self] in
             self?.presentFindInComments()
         })
-        children.append(UIAction(title: "Give Award", image: ApolloAssets.image(named: "option-gift-award")) { _ in })
-        children.append(UIAction(title: "Report", image: ApolloAssets.image(named: "option-report")) { _ in })
-        children.append(UIAction(title: "Live Activity", image: ApolloAssets.image(named: "option-live-activity")) { _ in })
-        children.append(UIAction(title: "Remind Me In\u{2026}",
-                                 image: ApolloAssets.image(named: "option-remind-me-in")) { _ in })
-
-        return UIMenu(children: children)
+        items.append(self.action("Give Award", "option-gift-award") {})
+        items.append(self.action("Report", "option-report") {})
+        items.append(self.action("Live Activity", "option-live-activity") {})
+        items.append(self.action("Remind Me In\u{2026}", "option-remind-me-in") {})
+        return items
     }
 
     /// "Collapse Child Comments": collapses every top-level thread at once.
@@ -459,7 +457,6 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Voting or saving redraws the header's info row and quick bar: the cell
     /// is rebuilt from the same link, so its buttons pick up the new state.
     private func reloadHeader() {
-        self.moreItem?.menu = self.commentsMenu()
         self.tableNode.reloadRows(at: [IndexPath(row: 0, section: 0)], with: .none)
     }
 
@@ -909,11 +906,13 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         case .comment(let comment, let depth):
             let collapsed = comment.fullName.map { self.collapsedComments.contains($0) } ?? false
             let hidden = comment.fullName.flatMap { self.hiddenReplyCounts[$0] } ?? 0
-            let menu = self.commentMenu(for: comment)
-            return {
+            return { [weak self] in
                 let cell = CommentCellNode(comment: comment, depth: depth, postAuthor: postAuthor,
                                            isCollapsed: collapsed, hiddenReplyCount: hidden)
-                cell.menu = menu
+                cell.onMoreTapped = { [weak self] in
+                    guard let self = self else { return }
+                    self.presentActions(self.commentActions(for: comment))
+                }
                 cell.onLinkTapped = { [weak self] url in self?.openLink(url) }
                 cell.onAuthorTapped = { [weak self] username in self?.openAuthor(username) }
                 return cell
@@ -923,48 +922,31 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         }
     }
 
-    /// A comment's ⋯ menu: the rows the original's Comment sheet shows, in its
-    /// order — upvote, downvote, save, reply, author, select text, share, share
-    /// as image, collapse to top, give award, report, remind me.
-    private func commentMenu(for comment: RDKComment) -> UIMenu {
-        var children: [UIMenuElement] = []
-
-        children.append(UIAction(title: "Upvote", image: ApolloAssets.image(named: "option-upvote")) { [weak self] _ in
-            self?.vote(comment, .up)
-        })
-        children.append(UIAction(title: "Downvote", image: ApolloAssets.image(named: "option-downvote")) { [weak self] _ in
-            self?.vote(comment, .down)
-        })
-        children.append(UIAction(title: comment.saved ? "Unsave" : "Save",
-                                 image: ApolloAssets.image(named: comment.saved ? "option-unsave" : "option-save")) { [weak self] _ in
+    /// Rows the original's Comment sheet shows, in its order.
+    private func commentActions(for comment: RDKComment) -> [ApolloActionSheetItem] {
+        var items: [ApolloActionSheetItem] = []
+        items.append(self.action("Upvote", "option-upvote") { [weak self] in self?.vote(comment, .up) })
+        items.append(self.action("Downvote", "option-downvote") { [weak self] in self?.vote(comment, .down) })
+        items.append(self.action(comment.saved ? "Unsave" : "Save",
+                                 comment.saved ? "option-unsave" : "option-save") { [weak self] in
             self?.toggleSave(comment)
         })
-        children.append(UIAction(title: "Reply", image: ApolloAssets.image(named: "option-reply")) { [weak self] _ in
-            self?.replyToComment(comment)
-        })
+        items.append(self.action("Reply", "option-reply") { [weak self] in self?.replyToComment(comment) })
         if let author = comment.author, !author.isEmpty {
-            children.append(UIAction(title: author, image: ApolloAssets.image(named: "option-author")) { [weak self] _ in
-                self?.openAuthor(author)
-            })
+            items.append(self.action(author, "option-author") { [weak self] in self?.openAuthor(author) })
         }
-        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { [weak self] _ in
+        items.append(self.action("Select Text", "option-select-mode") { [weak self] in
             self?.selectTextForComment(comment)
         })
-        children.append(UIAction(title: "Share", image: ApolloAssets.image(named: "option-share")) { [weak self] _ in
-            self?.share(comment)
-        })
-        children.append(UIAction(title: "Share as Image\u{2026}",
-                                 image: ApolloAssets.image(named: "option-share-as-image")) { _ in })
-        children.append(UIAction(title: "Collapse to Top",
-                                 image: ApolloAssets.image(named: "option-collapse-to-top")) { [weak self] _ in
+        items.append(self.action("Share", "option-share") { [weak self] in self?.share(comment) })
+        items.append(self.action("Share as Image\u{2026}", "option-share-as-image") {})
+        items.append(self.action("Collapse to Top", "option-collapse-to-top") { [weak self] in
             self?.collapseToTop(comment)
         })
-        children.append(UIAction(title: "Give Award", image: ApolloAssets.image(named: "option-gift-award")) { _ in })
-        children.append(UIAction(title: "Report", image: ApolloAssets.image(named: "option-report")) { _ in })
-        children.append(UIAction(title: "Remind Me In\u{2026}",
-                                 image: ApolloAssets.image(named: "option-remind-me-in")) { _ in })
-
-        return UIMenu(children: children)
+        items.append(self.action("Give Award", "option-gift-award") {})
+        items.append(self.action("Report", "option-report") {})
+        items.append(self.action("Remind Me In\u{2026}", "option-remind-me-in") {})
+        return items
     }
 
     // MARK: - Find in Comments
