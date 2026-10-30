@@ -486,6 +486,27 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     }];
 }
 
+// Native 0x10003eab4/0x10003ebb8: context-only request, final Listing.
+- (NSURLSessionDataTask *)context:(NSUInteger)context forComment:(RDKComment *)comment completion:(RDKArrayCompletionBlock)completion {
+    NSString *post = comment.linkID;
+    if ([post hasPrefix:@"t3_"]) { post = [post substringFromIndex:3]; }
+    NSString *identifier = comment.identifier;
+    NSCharacterSet *invalid = [[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"] invertedSet];
+    if (!post.length || !identifier.length || [post rangeOfCharacterFromSet:invalid].location != NSNotFound || [identifier rangeOfCharacterFromSet:invalid].location != NSNotFound) {
+        completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Invalid parent comment target."]);
+        return nil;
+    }
+    return [self getPath:[NSString stringWithFormat:@"comments/%@/_/%@.json", post, identifier] parameters:@{@"context": @(context)} completion:^(id response, NSError *error) {
+        if (error) { completion(nil, error); return; }
+        id listing = [response isKindOfClass:NSArray.class] ? [response lastObject] : response;
+        if (![listing isKindOfClass:NSDictionary.class] || ![listing[@"kind"] isEqual:@"Listing"]) {
+            completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Expected parent comments."]);
+            return;
+        }
+        completion([self objectsFromListingResponse:listing], nil);
+    }];
+}
+
 - (NSURLSessionDataTask *)moreComments:(RDKMoreComments *)moreComments forLink:(RDKLink *)link sort:(RDKCommentSortingMethod)sort completion:(RDKArrayCompletionBlock)completion {
     NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithDictionary:@{
         @"link_id": link.fullName ?: @"",

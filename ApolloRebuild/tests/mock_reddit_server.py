@@ -160,15 +160,27 @@ class Handler(BaseHTTPRequestHandler):
             if parts[0] == 'comments' and len(parts) in (2, 4):
                 thread = load('comments-thread.json')
                 if len(parts) == 4:
-                    if parts[2] != '_' or last != 'c002' or query.get('context') != ['0']:
+                    contexts = query.get('context', [])
+                    if parts[2] != '_' or last != 'c002' or len(contexts) != 1 or not contexts[0].isdigit():
                         return self.send_json({'message': 'Unknown mock comment context'}, 404)
                     parent = copy.deepcopy(thread[1]['data']['children'][0]['data']['replies']['data']['children'][0])
-                    parent['data']['depth'] = 0
-                    parent['data']['replies'] = {'kind': 'Listing', 'data': {'children': [
-                        {'kind': 't1', 'data': {'id': 'continued', 'name': 't1_continued',
-                         'parent_id': 't1_c002', 'link_id': 't3_1fx0002', 'author': 'continued_user',
-                         'body': 'Local continued thread reply', 'score': 3, 'depth': 1, 'replies': ''}}
-                    ]}}
+                    if int(contexts[0]) >= 10:
+                        # Parent loading: the final Listing is the ancestor chain,
+                        # which repeats the anchor the client must preserve.
+                        anchor = copy.deepcopy(parent)
+                        parent = copy.deepcopy(thread[1]['data']['children'][0])
+                        parent['data']['depth'] = 0
+                        parent['data']['replies'] = {'kind': 'Listing', 'data': {
+                            'children': [anchor, {'kind': 'more', 'data': {
+                                'count': 4, 'name': 't1_moreancestors', 'id': 'moreancestors',
+                                'parent_id': 't1_c001', 'depth': 1, 'children': []}}]}}
+                    else:
+                        parent['data']['depth'] = 0
+                        parent['data']['replies'] = {'kind': 'Listing', 'data': {'children': [
+                            {'kind': 't1', 'data': {'id': 'continued', 'name': 't1_continued',
+                             'parent_id': 't1_c002', 'link_id': 't3_1fx0002', 'author': 'continued_user',
+                             'body': 'Local continued thread reply', 'score': 3, 'depth': 1, 'replies': ''}}
+                        ]}}
                     thread[1]['data']['children'] = [parent]
                 else:
                     parent = thread[1]['data']['children'][0]['data']['replies']['data']['children'][0]
@@ -176,6 +188,9 @@ class Handler(BaseHTTPRequestHandler):
                         {'kind': 'more', 'data': {'count': 0, 'name': 't1_continue', 'id': 'continue',
                          'parent_id': 't1_c002', 'depth': 2, 'children': []}}
                     ]}}
+                    # Mock-only tap target: in-app reddit comment permalink.
+                    parent['data']['body'] = parent['data']['body'] + \
+                        ' [focused thread](https://www.reddit.com/r/EarthPorn/comments/1fx0002/mock/c002?context=2)'
                 return self.send_json(localize_media(thread, self.base()))
             is_listing = (len(parts) == 1 and last in SORTS) or (parts[0] == 'r' and len(parts) == 3 and last in SORTS) \
                 or (parts[0] == 'user' and last == 'submitted')

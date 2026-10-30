@@ -161,6 +161,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
         self.configureNavigationBar()
         self.configureJumpButton()
+        self.configureViewAllComments()
         self.loadComments()
     }
 
@@ -173,8 +174,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         titleButton.showsChevron = false
         titleButton.showsMenuAsPrimaryAction = false
         titleButton.menu = nil
-        titleButton.primaryTitle = PostFormatting.abbreviatedCount(self.link.totalComments) + " Comments"
-        titleButton.accessibilityLabel = "Comments"
+        titleButton.primaryTitle = self.continuingThread ? "Thread" : PostFormatting.abbreviatedCount(self.link.totalComments) + " Comments"
+        titleButton.accessibilityLabel = self.continuingThread ? "Thread" : "Comments"
         self.navigationItem.title = nil
         self.navigationItem.titleView = self.pill(around: titleButton)
 
@@ -447,6 +448,10 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     }
 
     private func openLink(_ url: URL) {
+        if let route = RedditCommentRoute(url: url), let navigation = self.navigationController {
+            route.push(on: navigation)
+            return
+        }
         guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
         self.present(SFSafariViewController(url: url), animated: true)
     }
@@ -457,6 +462,31 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     private func openSubreddit(_ name: String) {
         self.navigationController?.pushViewController(PostsViewController(postsType: .subreddit(name)), animated: true)
+    }
+
+    /// Native viewFullPostNode is a bottom overlay on ordinary focused views,
+    /// absent in Continue Thread. Styling/scroll-animation parity is separate.
+    private func configureViewAllComments() {
+        guard self.focusedCommentID != nil, !self.continuingThread else { return }
+        let button = UIButton(type: .system)
+        button.setTitle("View All Comments\nThis is a single comment thread from the post.", for: .normal)
+        button.titleLabel?.numberOfLines = 2
+        button.backgroundColor = .secondarySystemBackground
+        button.accessibilityLabel = "View All Comments. This is a single comment thread from the post."
+        button.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            self.navigationController?.pushViewController(CommentsViewController(link: self.link), animated: true)
+        }, for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.leadingAnchor, constant: 10),
+            button.trailingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.trailingAnchor, constant: -10),
+            button.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 55)
+        ])
+        self.tableNode.view.contentInset.bottom = 75
+        self.jumpButton.isHidden = true
     }
 
     // MARK: - Jump button
@@ -724,6 +754,70 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         return result
     }
 
+    private var loadingParents = false
+
+    private var showsParentRow: Bool {
+        guard self.focusedCommentID != nil, !self.continuingThread,
+              let first = self.tree.first, case .comment(let comment, _) = first else { return false }
+        return comment.parentID?.hasPrefix("t1_") == true
+    }
+
+    private func loadParentComments() {
+        guard self.showsParentRow, !self.loadingParents,
+              let first = self.tree.first, case .comment(let anchor, _) = first else { return }
+        self.loadingParents = true
+        let generation = self.loadGeneration
+        RDKClient.shared().context(10, for: anchor) { [weak self] comments, error in
+            guard let self = self else { return }
+            self.loadingParents = false
+            guard generation == self.loadGeneration, error == nil else { return }
+            self.tree = Self.mergingParents(comments as? [RDKThing] ?? [], into: self.tree)
+            self.rebuildRows()
+            self.tableNode.reloadData()
+        }
+    }
+
+    /// Reconnect the original first-root subtree, never replace it with the
+    /// response's stale copy. Native cache walk stops at the matching anchor.
+    static func mergingParents(_ incoming: [RDKThing], into tree: [Row]) -> [Row] {
+        guard let first = tree.first, case .comment(let anchor, _) = first,
+              let anchorName = anchor.fullName else { return tree }
+        var parents: [String: RDKComment] = [:]
+        func collect(_ things: [RDKThing]) {
+            for thing in things {
+                guard let comment = thing as? RDKComment else { continue }
+                if comment.fullName == anchorName { break }
+                if let name = comment.fullName, parents[name] == nil {
+                    parents[name] = comment
+                    collect(comment.replies ?? [])
+                }
+            }
+        }
+        collect(incoming)
+        var chain: [RDKComment] = []
+        var parent = anchor.parentID
+        var visited: Set<String> = [anchorName]
+        while let name = parent, visited.insert(name).inserted, let comment = parents[name] {
+            chain.append(comment)
+            parent = comment.parentID
+        }
+        guard !chain.isEmpty else { return tree }
+        let ancestors = chain.reversed().enumerated().map { Row.comment($0.element, depth: $0.offset) }
+        // Only the first root is wrapped. Other roots and their depths survive.
+        let boundary = tree.dropFirst().firstIndex { row in
+            if case .comment(_, let depth) = row { return depth == 0 }
+            if case .more(let more, _) = row { return more.parentID?.hasPrefix("t3_") == true }
+            return false
+        } ?? tree.endIndex
+        let shifted = tree[..<boundary].map { row -> Row in
+            switch row {
+            case .comment(let comment, let depth): return .comment(comment, depth: depth + chain.count)
+            case .more(let more, let depth): return .more(more, depth: depth + chain.count)
+            }
+        }
+        return ancestors + shifted + Array(tree[boundary...])
+    }
+
     // MARK: - ASTableDataSource / ASTableDelegate
 
     func numberOfSections(in tableNode: ASTableNode) -> Int {
@@ -731,12 +825,21 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     }
 
     func tableNode(_ tableNode: ASTableNode, numberOfRowsInSection section: Int) -> Int {
-        let count = section == 0 ? 1 : self.rows.count
+        let count = section == 0 ? (self.showsParentRow ? 2 : 1) : self.rows.count
         return count
     }
 
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         if indexPath.section == 0 {
+            if indexPath.row == 1 {
+                return {
+                    let cell = ASTextCellNode()
+                    cell.text = "Load parent comments…"
+                    cell.textInsets = UIEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+                    cell.backgroundColor = .systemBackground
+                    return cell
+                }
+            }
             let link = self.link
             return { [weak self] in
                 let cell = LargePostCellNode(link: link, isInsideComments: true)
@@ -875,6 +978,10 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     func tableNode(_ tableNode: ASTableNode, didSelectRowAt indexPath: IndexPath) {
         tableNode.deselectRow(at: indexPath, animated: true)
+        if indexPath.section == 0, indexPath.row == 1 {
+            self.loadParentComments()
+            return
+        }
         guard indexPath.section == 1, indexPath.row < self.rows.count else { return }
         switch self.rows[indexPath.row] {
         case .more(let more, _):

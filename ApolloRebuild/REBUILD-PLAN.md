@@ -392,6 +392,49 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
 - Parent-context row, view-full-post control, permalink routing and focused-scroll
   behavior remain separate work.
 
+### Parent-context controls (in progress)
+
+- Static native evidence distinguishes parent loading from Continue Thread:
+  0x100723c4c requests context10 around first flat-cache comment, context client
+  0x10003eab4/0x10003ebb8 returns final Listing with no sort/depth/limit; merge
+  0x100524ba8/0x100524f28 stops at matching old root and preserves old subtree.
+- Added context-only client API and in-place ancestor-chain merge preserving
+  original nodes/replies and unrelated roots. Added Load parent comments… row
+  only for ordinary focused views whose first comment has t1 parent; View All
+  Comments bottom control pushes a new full controller. Continue Thread hides
+  both and now uses native title Thread. Exact animation/geometry parity unknown.
+- Host actual-client117 checks and tree regression pass. Ordinary focused screens
+  previously had no permalink entry, so the controls were unreachable from normal
+  navigation; added `RedditCommentRoute` (strict reddit host + `/r/<sub>/comments/
+  <post>/<slug>/<comment>?context=N` parsing) in SceneDelegate, reachable from
+  scene URL delivery and the in-app markdown link sink. It pushes a partial
+  `RDKLink` stub with commentID/context. No new URL scheme is registered and no
+  universal-link association is claimed.
+  Tests: `tests/run_comment_route_tests.py` compiles the real parser and rejects
+  lookalike hosts, extra path segments, non-http schemes, duplicate/out-of-range
+  context, and encoded IDs. Six mock-server tests cover focused context2, parent
+  context10 with the repeated anchor, full thread, and unknown-comment 404.
+  - Parent scroll-offset preservation, repeated runtime loading, and View All
+    Comments geometry/animation remain open.
+- Isolated mock runtime PID26696 verified the whole chain in one process, no
+  crash, zero vote/save/comment requests: markdown reddit comment link pushes a
+  focused screen (`context=2&limit=100`, no browser); the exact row
+  "Load parent comments…" sits above the first comment; tapping it requests
+  `context=10` with no sort/limit/depth and prepends t1_c001 at depth 0 while
+  preserving the original c002 subtree once, then removes the row; "View All
+  Comments" pushes a new full thread (`depth=20`, no focused overlay) and Back
+  restores the merged focused screen with no refetch. Evidence:
+  approved temp `replytest-verify-122258/evidence` (before/after PNG+hierarchy
+  pairs, requests.jsonl, SUMMARY.md).
+  - Observed: focused screen title equals the full thread's "N Comments" (native
+    ordinary-focus title not yet established; only Thread-for-continue is proven).
+  - Observed affordance nits, deliberately not styled in this pass: the parent row
+    has no chevron/secondary tint and the bottom View All Comments bar has low
+    contrast. Not treated as breakage; native styling is unverified.
+  - Unverified: jump-to-focused-comment scrolling, collapse toggles after merge,
+    repeated parent loading at runtime, edited/hidden ancestor contexts, and any
+    real-Reddit behavior.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

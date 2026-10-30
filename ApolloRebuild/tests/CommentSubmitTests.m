@@ -134,6 +134,14 @@ int main(void) { @autoreleasepool {
     [parameters removeAllObjects];
     for (NSURLQueryItem *item in query.queryItems) { parameters[item.name] = item.value; }
     CHECK([parameters[@"depth"] isEqual:@"20"] && !parameters[@"context"]);
+    RDKComment *anchor = [RDKComment new]; anchor.identifier = @"reply"; anchor.linkID = @"t3_post";
+    [focused context:10 forComment:anchor completion:^(NSArray *comments, NSError *error) { CHECK(!error && comments.count == 1); }];
+    query = [NSURLComponents componentsWithURL:focused.capturedRequest.URL resolvingAgainstBaseURL:NO];
+    [parameters removeAllObjects];
+    for (NSURLQueryItem *item in query.queryItems) { parameters[item.name] = item.value; }
+    CHECK([focused.capturedRequest.URL.path isEqual:@"/comments/post/_/reply.json"]);
+    CHECK([parameters[@"context"] isEqual:@"10"]);
+    CHECK(!parameters[@"sort"] && !parameters[@"limit"] && !parameters[@"depth"]);
     StubClient *badFocus = Client();
     [badFocus linkAndContext:0 forCommentWithIdentifier:@"../bad" linkIdentifier:@"post" commentSort:RDKCommentSortingMethodDefault pagination:nil completion:^(RDKLink *link, NSArray *comments, NSError *error) { CHECK(error && !link); }];
     CHECK(badFocus.sends == 0);

@@ -35,7 +35,7 @@ struct CommentsViewController {
 '''
 helpers = "\n".join(declaration(marker) for marker in [
     "enum Row {", "static func flatten(", "static func visibleRows(", "static func rowsFromMoreChildren(",
-    "static func insertingSubmittedComment("
+    "static func insertingSubmittedComment(", "static func mergingParents("
 ])
 tests = '''
 }
@@ -84,7 +84,16 @@ let rootReply = RDKComment("root-reply", "post", 0)
 assert(names(C.insertingSubmittedComment(rootReply, in: tree, postFullName: "post", collapsed: []).0).first == "root-reply")
 let orphan = RDKComment("orphan", "absent-parent", 0)
 assert(names(C.insertingSubmittedComment(orphan, in: tree, postFullName: "post", collapsed: []).0) == names(tree))
-print("PASS: comment tree collapse, more rows, ordering, cycles, reply insertion/ancestry/deduplication")
+let ancestor = RDKComment("ancestor", "post", 0)
+let responseA = RDKComment("a", "ancestor", 1)
+a.parentID = "ancestor"; ancestor.replies = [responseA]
+let merged = C.mergingParents([ancestor], into: tree)
+assert(names(merged) == ["ancestor", "a", "b", "more-b", "more-a", "c", "root-more"])
+if case .comment(let original, let depth) = merged[1] { assert(original === a && depth == 1) } else { fatalError() }
+if case .comment(_, let depth) = merged[5] { assert(depth == 0) } else { fatalError() }
+assert(names(C.mergingParents([ancestor], into: merged)) == names(merged))
+assert(names(C.mergingParents([], into: tree)) == names(tree))
+print("PASS: comment tree collapse, ordering, cycles, reply insertion and ancestor merge preservation")
 '''
 with tempfile.TemporaryDirectory(prefix="apollo-comment-tree-") as work:
     swift = pathlib.Path(work) / "main.swift"
