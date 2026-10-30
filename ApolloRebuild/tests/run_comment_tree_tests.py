@@ -34,7 +34,8 @@ class RDKMoreComments: RDKThing {
 struct CommentsViewController {
 '''
 helpers = "\n".join(declaration(marker) for marker in [
-    "enum Row {", "static func flatten(", "static func visibleRows(", "static func rowsFromMoreChildren("
+    "enum Row {", "static func flatten(", "static func visibleRows(", "static func rowsFromMoreChildren(",
+    "static func insertingSubmittedComment("
 ])
 tests = '''
 }
@@ -72,7 +73,18 @@ assert(names(C.visibleRows(in: after, collapsed: ["a"]).0) == ["a", "c", "root-m
 // Malformed cycles terminate and preserve each object once.
 let x = RDKComment("x", "y", 1), y = RDKComment("y", "x", 2)
 assert(C.rowsFromMoreChildren([x, y], in: []).count == 2)
-print("PASS: comment tree collapse, root/nested more rows, response ordering, collapsed expansion, cycles")
+let reply = RDKComment("reply", "b", 0)
+let (inserted, uncollapsed) = C.insertingSubmittedComment(reply, in: tree, postFullName: "post", collapsed: ["a", "b", "c"])
+assert(names(inserted) == ["a", "b", "reply", "more-b", "more-a", "c", "root-more"])
+assert(uncollapsed == ["c"])
+assert(names(C.visibleRows(in: inserted, collapsed: uncollapsed).0).contains("reply"))
+if case .comment(_, let depth) = inserted[2] { assert(depth == 2) } else { fatalError() }
+assert(names(C.insertingSubmittedComment(reply, in: inserted, postFullName: "post", collapsed: []).0) == names(inserted))
+let rootReply = RDKComment("root-reply", "post", 0)
+assert(names(C.insertingSubmittedComment(rootReply, in: tree, postFullName: "post", collapsed: []).0).first == "root-reply")
+let orphan = RDKComment("orphan", "absent-parent", 0)
+assert(names(C.insertingSubmittedComment(orphan, in: tree, postFullName: "post", collapsed: []).0) == names(tree))
+print("PASS: comment tree collapse, more rows, ordering, cycles, reply insertion/ancestry/deduplication")
 '''
 with tempfile.TemporaryDirectory(prefix="apollo-comment-tree-") as work:
     swift = pathlib.Path(work) / "main.swift"

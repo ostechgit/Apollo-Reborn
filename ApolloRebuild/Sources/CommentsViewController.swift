@@ -364,9 +364,66 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     }
 
     private func replyToPost() {
-        let composer = ComposeViewController(isPost: false)
-        let navigation = UINavigationController(rootViewController: composer)
-        self.present(navigation, animated: true)
+        guard AccountManager.shared.isLogged, let target = self.link.fullName else { return }
+        self.presentReply(to: target)
+    }
+
+    private func presentReply(to target: String) {
+        let composer = ComposeViewController(replyTo: target) { [weak self] comment in
+            guard let self = self else { return }
+            self.insertSubmittedComment(comment)
+        }
+        self.present(UINavigationController(rootViewController: composer), animated: true)
+    }
+
+    private func insertSubmittedComment(_ comment: RDKComment) {
+        guard !self.tree.contains(where: {
+            if case .comment(let existing, _) = $0 { return existing.fullName == comment.fullName }
+            return false
+        }) else { return }
+        // A snapshot requested before the write must not replace the new row.
+        self.loadGeneration += 1
+        self.threadTask?.cancel()
+        self.threadTask = nil
+        self.expandingMore.removeAll()
+        (self.tree, self.collapsedComments) = Self.insertingSubmittedComment(comment, in: self.tree,
+            postFullName: self.link.fullName, collapsed: self.collapsedComments)
+        self.link.totalComments += 1
+        self.rebuildRows()
+        self.configureNavigationBar()
+        self.tableNode.reloadData()
+    }
+
+    /// Only root replies belong at depth zero. If the parent is absent from
+    /// this snapshot, don't misrepresent a nested reply as a top-level comment.
+    static func insertingSubmittedComment(_ comment: RDKComment, in tree: [Row],
+                                           postFullName: String?, collapsed: Set<String>) -> ([Row], Set<String>) {
+        guard let parent = comment.parentID else { return (tree, collapsed) }
+        if tree.contains(where: {
+            if case .comment(let existing, _) = $0 { return existing.fullName == comment.fullName }
+            return false
+        }) { return (tree, collapsed) }
+        var result = tree
+        var expanded = collapsed
+        if parent == postFullName {
+            result.insert(.comment(comment, depth: 0), at: 0)
+        } else if let index = tree.firstIndex(where: {
+            if case .comment(let existing, _) = $0 { return existing.fullName == parent }
+            return false
+        }), case .comment(_, let depth) = tree[index] {
+            // Reveal every loaded ancestor, not just the immediate parent.
+            var ancestor: String? = parent
+            var visited: Set<String> = []
+            while let name = ancestor, visited.insert(name).inserted {
+                expanded.remove(name)
+                ancestor = tree.compactMap { row -> RDKComment? in
+                    if case .comment(let existing, _) = row, existing.fullName == name { return existing }
+                    return nil
+                }.first?.parentID
+            }
+            result.insert(.comment(comment, depth: depth + 1), at: index + 1)
+        }
+        return (result, expanded)
     }
 
     private func share() {
@@ -782,9 +839,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     }
 
     private func replyToComment(_ comment: RDKComment) {
-        let composer = ComposeViewController(isPost: false)
-        let navigation = UINavigationController(rootViewController: composer)
-        self.present(navigation, animated: true)
+        guard AccountManager.shared.isLogged, let target = comment.fullName else { return }
+        self.presentReply(to: target)
     }
 
     private func share(_ comment: RDKComment) {

@@ -104,6 +104,9 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 // Expands a "load more comments" stub (api/morechildren); returns the comments as a flat list
 - (nullable NSURLSessionDataTask *)moreComments:(RDKMoreComments *)moreComments forLink:(RDKLink *)link sort:(RDKCommentSortingMethod)sort completion:(RDKArrayCompletionBlock)completion;
 
+// Native submit funnel: text + t1_/t3_ fullname -> POST api/comment.
+- (nullable NSURLSessionDataTask *)submitComment:(NSString *)text onThingWithFullName:(NSString *)fullName completion:(void (^)(RDKComment *_Nullable comment, NSError *_Nullable error))completion NS_SWIFT_NAME(submitComment(_:onThingWithFullName:completion:));
+
 // MARK: Voting and saving (account required)
 
 - (nullable NSURLSessionDataTask *)voteOnThingWithFullName:(NSString *)fullName direction:(RDKVoteDirection)direction completion:(RDKCompletionBlock)completion;

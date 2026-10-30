@@ -317,6 +317,54 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
   evidence: `rebuild-detail`, `rebuild-browser`, `rebuild-sort-new-menu`,
   `rebuild-save-restored-menu` PNGs. Reply remains a non-submitting stub.
 
+### Reply transport and insertion pass (2026-10-30)
+
+- PID97282 runtime check: action strip exposes Upvote/Downvote/Save/Reply/Share;
+  single image opens and Done dismisses. Hierarchy presence only, not VoiceOver
+  playback. Markdown taps, gallery paging, suggested-sort response still unverified.
+- First reply implementation archived/installed/launched as PID1263. Reply target
+  is a t1_/t3_ fullname, matching original funnel `0x10003e574` (`text`, `thing_id`,
+  POST api/comment). Composer now submits, prevents concurrent taps, retains text
+  on error and dismisses only after validated success. This is NOT native composer
+  parity: context preview, formatting toolbar, drafts and presentation remain open.
+  Unsupported UITextView placeholder KVC removed; unsupported new-post Submit is
+  disabled instead of silently dismissing.
+- Actual client host harness `bash tests/run_comment_submit_tests.sh`: 98 checks,
+  no failures. Real RDKClient/request construction/serializer/model code; only
+  final network boundary intercepted. Post/comment targets, HTTP401/403/500,
+  timeout, JSON rejection, malformed payload, missing/inconsistent identity,
+  wrong parent, logged-out/app-only rejection tested. Every failure sends at most
+  once. Comment writes explicitly disable generic HTTP401 replay; token refresh
+  before first send is retained. No live Reddit writes performed.
+- Python mock contract tests cover Unicode/post/comment reply fixtures and
+  rejection; these are separate from actual-client tests. Tree helper tests cover
+  insertion depth, ancestor expansion, deduplication and absent-parent handling.
+  A missing nested parent no longer promotes its reply to thread root. Successful
+  insertion invalidates older thread/morechildren snapshots.
+- Current tests expose existing unrelated warnings: RDKMultiredditDescription's
+  NSObject description collision and boxed-BOOL conditions in moderation APIs.
+- Final reply build archived/installed/launched as PID8319 (including keyboard
+  avoidance and serializer guards for scalar `json` payloads). Four Python mock
+  contract tests pass; successful mock writes now get unique IDs.
+- End-to-end mock UI verification passed on isolated test bundle
+  `com.omarsalam.ApolloRebuildReplyTest` PID8994, localhost:59518, fake mock_user:
+  root t3_ reply inserted; nested t1_ reply inserted beneath its parent; two rapid
+  Submit taps during a 1.5s delay produced exactly one request/insertion; explicit
+  rejection and malformed result both retained composer text after error dismissal.
+  Five LOCAL mock comment requests total (including one accidentally capitalized
+  fixture input that followed the success path), zero vote requests. No live
+  Reddit writes, real credentials, or signed-in rebuild data modifications.
+  Evidence: approved temp `apollo-reply-ui.BWg3i2/requests.jsonl` and root-inserted,
+  nested-inserted, reject-real-alert/reject-retained, malformed-alert/retained pairs.
+  Software-keyboard layout remains unverified (keyboard stayed hidden); Unicode
+  UI typing unsupported by idb, but Unicode transport is host-tested. No obvious
+  overlap/truncation in inspected screenshots. Native composer parity still open.
+- Next functional gap survey: Continue thread renders but `expand` immediately
+  returns for `isContinueThread`; no focus-comment/context request inputs or parent
+  row exist. Original saved decompile `0x1007237ec` covers availableLocally and
+  ordinary morechildren loading, not enough to establish Continue-thread routing.
+  Do not assume that row should use morechildren; trace its earlier dispatcher.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

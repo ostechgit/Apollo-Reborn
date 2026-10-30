@@ -496,6 +496,50 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     }];
 }
 
+// Original funnel: 0x10003e574; auth/write helper: 0x100006fa4.
+- (NSURLSessionDataTask *)submitComment:(NSString *)text onThingWithFullName:(NSString *)fullName completion:(void (^)(RDKComment *, NSError *))completion {
+    if (!self.isAuthenticatedWithOAuth) {
+        completion(nil, [self errorWithCode:RDKClientErrorAuthenticationRequired description:@"Sign in to a Reddit account to do that."]);
+        return nil;
+    }
+    if (![text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length ||
+        fullName.length <= 3 || !([fullName hasPrefix:@"t1_"] || [fullName hasPrefix:@"t3_"])) {
+        completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"A reply needs text and a post or comment target."]);
+        return nil;
+    }
+    // Refresh expired tokens before sending, but never replay this write after
+    // a response or network failure. Keep the draft and let the user decide.
+    return [self taskWithMethod:@"POST" path:@"api/comment" parameters:@{@"text": text, @"thing_id": fullName} retryOnUnauthorized:NO completion:^(id response, NSError *error) {
+        if (error) { completion(nil, error); return; }
+        NSDictionary *json = [response isKindOfClass:NSDictionary.class] ? response[@"json"] : nil;
+        if (![json isKindOfClass:NSDictionary.class]) {
+            completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Reddit returned an invalid comment response."]);
+            return;
+        }
+        NSArray *errors = [json[@"errors"] isKindOfClass:NSArray.class] ? json[@"errors"] : nil;
+        if (errors.count) {
+            NSArray *first = [errors.firstObject isKindOfClass:NSArray.class] ? errors.firstObject : nil;
+            NSString *message = first.count > 1 && [first[1] isKindOfClass:NSString.class] ? first[1] : @"Reddit could not submit the comment.";
+            completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:message]);
+            return;
+        }
+        NSDictionary *data = [json[@"data"] isKindOfClass:NSDictionary.class] ? json[@"data"] : nil;
+        NSArray *things = [data[@"things"] isKindOfClass:NSArray.class] ? data[@"things"] : nil;
+        id thing = things.firstObject;
+        NSDictionary *fields = [thing isKindOfClass:NSDictionary.class] && [thing[@"data"] isKindOfClass:NSDictionary.class] ? thing[@"data"] : nil;
+        NSString *identifier = [fields[@"id"] isKindOfClass:NSString.class] ? fields[@"id"] : nil;
+        NSString *name = [fields[@"name"] isKindOfClass:NSString.class] ? fields[@"name"] : nil;
+        NSString *parent = [fields[@"parent_id"] isKindOfClass:NSString.class] ? fields[@"parent_id"] : nil;
+        BOOL validIdentity = identifier.length && [name isEqualToString:[@"t1_" stringByAppendingString:identifier]] && [parent isEqualToString:fullName];
+        RDKComment *comment = validIdentity ? [[RDKObjectBuilder objectBuilder] objectFromJSON:thing] : nil;
+        if (![comment isKindOfClass:RDKComment.class]) {
+            completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Reddit did not return the submitted comment. Check the thread before trying again."]);
+            return;
+        }
+        completion(comment, nil);
+    }];
+}
+
 // MARK: - Voting and saving
 
 - (NSURLSessionDataTask *)accountTaskWithPath:(NSString *)path parameters:(NSDictionary *)parameters completion:(RDKCompletionBlock)completion {

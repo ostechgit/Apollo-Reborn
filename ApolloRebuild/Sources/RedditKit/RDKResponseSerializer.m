@@ -41,7 +41,8 @@ NSString *const RDKResponseSerializerJSONKey = @"RDKResponseSerializerJSON";
         code = RDKClientErrorInvalidOAuthGrant;
     } else if ([JSON isKindOfClass:[NSDictionary class]]) {
         // api_type=json: {"json": {"errors": [["RATELIMIT", "you are doing that too much", "ratelimit"]]}}
-        NSArray *errors = [JSON valueForKeyPath:@"json.errors"];
+        NSDictionary *json = [JSON[@"json"] isKindOfClass:NSDictionary.class] ? JSON[@"json"] : nil;
+        NSArray *errors = json[@"errors"];
         if ([errors isKindOfClass:[NSArray class]] && errors.count > 0) {
             NSArray *first = errors.firstObject;
             failure = [first isKindOfClass:[NSArray class]] && first.count > 1 ? [first[1] description] : [first description];

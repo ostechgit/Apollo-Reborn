@@ -13,7 +13,7 @@ Every request is logged (Authorization values redacted). Tokens are fake. Endpoi
   GET  /<sort>.json, /r/<name>/<sort>.json, /r/all/<sort>.json, /user/<name>/submitted.json
        (a second page when ?after= is set, then the end of the listing)
   GET  /comments/<id>.json
-  POST /api/vote, /api/save, /api/unsave, /api/morechildren
+  POST /api/vote, /api/save, /api/unsave, /api/morechildren, /api/comment
   GET  /img/<w>x<h>/<name>.png   a gradient PNG of that size
 """
 import argparse
@@ -24,6 +24,7 @@ import json
 import os
 import struct
 import sys
+import uuid
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -204,6 +205,22 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('Authorization', '').lower() == 'bearer mock-apponly':
                 return self.send_json({'message': 'Forbidden', 'error': 403}, 403)
             return self.send_json({})
+        if path == '/api/comment':
+            if self.headers.get('Authorization', '').lower() == 'bearer mock-apponly':
+                return self.send_json({'message': 'Forbidden', 'error': 403}, 403)
+            target, text = form.get('thing_id', ''), form.get('text', '')
+            if not target.startswith(('t1_', 't3_')) or not text.strip():
+                return self.send_json({'json': {'errors': [['NO_TEXT', 'Reply text and target required', 'text']]}})
+            if text == 'mock-reject':
+                return self.send_json({'json': {'errors': [['RATELIMIT', 'Mock rate limit', 'ratelimit']]}})
+            if text == 'mock-malformed':
+                return self.send_json({'json': {'errors': [], 'data': {}}})
+            identifier = 'mockreply' + uuid.uuid4().hex[:12]
+            return self.send_json({'json': {'errors': [], 'data': {'things': [{'kind': 't1', 'data': {
+                'id': identifier, 'name': 't1_' + identifier, 'parent_id': target,
+                'link_id': target if target.startswith('t3_') else 't3_mock',
+                'body': text, 'author': 'mock_user', 'score': 1, 'likes': True,
+                'created_utc': 1761594000, 'edited': False, 'replies': ''}}]}}})
         if path == '/api/morechildren':
             children = [c for c in form.get('children', '').split(',') if c]
             things = [{'kind': 't1', 'data': {'id': c, 'name': 't1_' + c, 'author': f'replier_{c}', 'body': f'Loaded reply {c}.',

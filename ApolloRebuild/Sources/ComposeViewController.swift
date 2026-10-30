@@ -9,6 +9,16 @@ class ComposeViewController: UIViewController {
     private var bodyTextView: UITextView?
     private var subredditField: UITextField?
     private var isPost = true
+    private var replyTarget: String?
+    private var onSubmitted: ((RDKComment) -> Void)?
+    private var submitButton: UIButton?
+    private var submitting = false
+
+    convenience init(replyTo fullName: String, onSubmitted: @escaping (RDKComment) -> Void) {
+        self.init(isPost: false)
+        self.replyTarget = fullName
+        self.onSubmitted = onSubmitted
+    }
     
     init(isPost: Bool) {
         self.isPost = isPost
@@ -31,11 +41,19 @@ class ComposeViewController: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         self.view.addSubview(stack)
         
+        // Keep Submit reachable while editing rather than behind the keyboard.
+        let bottom = self.view.safeAreaLayoutGuide.bottomAnchor
+        let composerBottom: NSLayoutYAxisAnchor
+        if #available(iOS 15.0, *) {
+            composerBottom = self.view.keyboardLayoutGuide.topAnchor
+        } else {
+            composerBottom = bottom
+        }
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor, constant: 16),
             stack.leadingAnchor.constraint(equalTo: self.view.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -16),
-            stack.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
+            stack.bottomAnchor.constraint(equalTo: composerBottom, constant: -16)
         ])
         
         if self.isPost {
@@ -56,7 +74,7 @@ class ComposeViewController: UIViewController {
         
         // Body text view
         let bodyTextView = UITextView()
-        bodyTextView.placeholder = self.isPost ? "Body (optional)" : "Comment"
+        bodyTextView.accessibilityLabel = self.isPost ? "Body" : "Comment"
         bodyTextView.font = UIFont.systemFont(ofSize: 14)
         stack.addArrangedSubview(bodyTextView)
         self.bodyTextView = bodyTextView
@@ -66,23 +84,40 @@ class ComposeViewController: UIViewController {
         submitButton.setTitle("Submit", for: .normal)
         submitButton.addTarget(self, action: #selector(submitTapped), for: .touchUpInside)
         stack.addArrangedSubview(submitButton)
+        self.submitButton = submitButton
+        submitButton.isEnabled = self.replyTarget != nil
+        self.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel,
+            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
     }
     
     @objc private func submitTapped() {
-        // In the original app, this would submit the post/comment to Reddit
-        // For now, we'll just dismiss
-        self.dismiss(animated: true, completion: nil)
+        guard !self.submitting, let target = self.replyTarget,
+              let text = self.bodyTextView?.text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        self.submitting = true
+        self.isModalInPresentation = true
+        self.navigationController?.isModalInPresentation = true
+        self.submitButton?.isEnabled = false
+        self.navigationItem.leftBarButtonItem?.isEnabled = false
+        RDKClient.shared().submitComment(text, onThingWithFullName: target) { [weak self] comment, error in
+            guard let self = self else { return }
+            self.submitting = false
+            self.isModalInPresentation = false
+            self.navigationController?.isModalInPresentation = false
+            self.submitButton?.isEnabled = true
+            self.navigationItem.leftBarButtonItem?.isEnabled = true
+            guard let comment = comment, error == nil else {
+                // Keep text intact. Never silently dismiss a rejected/uncertain write.
+                let alert = UIAlertController(title: nil, message: error?.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+                return
+            }
+            self.onSubmitted?(comment)
+            self.dismiss(animated: true)
+        }
     }
 }
 
-// UITextView placeholder extension
-extension UITextView {
-    var placeholder: String? {
-        get {
-            return self.value(forKey: "placeholder") as? String
-        }
-        set {
-            self.setValue(newValue, forKey: "placeholder")
-        }
-    }
-}
+// Reply transport is functional; native context preview, draft handling and
+// formatting toolbar remain a separate composer-parity investigation.
