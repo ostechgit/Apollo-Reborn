@@ -20,7 +20,7 @@ stubs = '''
 import Foundation
 class RDKThing { var fullName: String?; init(_ name: String) { fullName = name } }
 class RDKComment: RDKThing {
-    var parentID: String?; var depth: Int; var replies: [RDKThing]?
+    var parentID: String?; var depth: Int; var replies: [RDKThing]?; var body: String?
     init(_ name: String, _ parent: String, _ depth: Int) {
         self.parentID = parent; self.depth = depth; super.init(name)
     }
@@ -35,7 +35,7 @@ struct CommentsViewController {
 '''
 helpers = "\n".join(declaration(marker) for marker in [
     "enum Row {", "static func flatten(", "static func visibleRows(", "static func rowsFromMoreChildren(",
-    "static func insertingSubmittedComment(", "static func mergingParents("
+    "static func insertingSubmittedComment(", "static func mergingParents(", "static func matchingRows("
 ])
 tests = '''
 }
@@ -93,7 +93,12 @@ if case .comment(let original, let depth) = merged[1] { assert(original === a &&
 if case .comment(_, let depth) = merged[5] { assert(depth == 0) } else { fatalError() }
 assert(names(C.mergingParents([ancestor], into: merged)) == names(merged))
 assert(names(C.mergingParents([], into: tree)) == names(tree))
-print("PASS: comment tree collapse, ordering, cycles, reply insertion and ancestor merge preservation")
+a.body = "Incredible COLOURS, café"; b.body = "no match here"; c.body = nil
+assert(C.matchingRows(in: tree, query: "colours") == [0])
+assert(C.matchingRows(in: tree, query: "cafe") == [0])
+assert(C.matchingRows(in: tree, query: "  ") == [])
+assert(C.matchingRows(in: tree, query: "much better") == [])
+print("PASS: comment tree collapse, ordering, cycles, reply insertion, ancestor merge, find matching")
 '''
 with tempfile.TemporaryDirectory(prefix="apollo-comment-tree-") as work:
     swift = pathlib.Path(work) / "main.swift"

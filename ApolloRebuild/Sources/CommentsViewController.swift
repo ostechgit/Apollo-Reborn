@@ -171,6 +171,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.refreshControl.addTarget(self, action: #selector(refreshControlActivated), for: .valueChanged)
         tableView.refreshControl = self.refreshControl
 
+        self.configureFindBar()
         self.configureNavigationBar()
         self.configureJumpButton()
         self.configureViewAllComments()
@@ -962,9 +963,123 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         return UIMenu(children: children)
     }
 
-    /// "Find in Comments": the original adds a search field and jumps between
-    /// matches. Not built yet.
+    // MARK: - Find in Comments
+
+    /// Native registers a Find in Comments entry (0x1007026b8); its presentation
+    /// is unverified, so this adds a compact bar that jumps between matching
+    /// comments without changing the loaded tree.
+    private let findBar = UIView()
+    private let findField = UITextField()
+    private let findStatus = UILabel()
+    private var findMatches: [Int] = []
+    private var findMatchIndex = 0
+    private var findBarPriorInset: CGFloat = 0
+
+    private func configureFindBar() {
+        self.findField.placeholder = "Find in Comments"
+        self.findField.returnKeyType = .search
+        self.findField.clearButtonMode = .whileEditing
+        self.findField.borderStyle = .roundedRect
+        self.findField.accessibilityLabel = "Find in Comments"
+        self.findField.addTarget(self, action: #selector(findTextChanged(_:)), for: .editingChanged)
+
+        self.findStatus.font = UIFont.preferredFont(forTextStyle: .footnote)
+        self.findStatus.textColor = .secondaryLabel
+        self.findStatus.textAlignment = .right
+        self.findStatus.setContentHuggingPriority(.required, for: .horizontal)
+
+        let previous = UIButton(type: .system)
+        previous.setImage(UIImage(systemName: "chevron.up"), for: .normal)
+        previous.accessibilityLabel = "Previous Match"
+        previous.addAction(UIAction { [weak self] _ in self?.stepMatch(-1) }, for: .touchUpInside)
+        let next = UIButton(type: .system)
+        next.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        next.accessibilityLabel = "Next Match"
+        next.addAction(UIAction { [weak self] _ in self?.stepMatch(1) }, for: .touchUpInside)
+        let done = UIButton(type: .system)
+        done.setTitle("Done", for: .normal)
+        done.addAction(UIAction { [weak self] _ in self?.endFindInComments() }, for: .touchUpInside)
+
+        let row = UIStackView(arrangedSubviews: [self.findField, self.findStatus, previous, next, done])
+        row.spacing = 8
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        self.findBar.addSubview(row)
+        self.findBar.backgroundColor = .secondarySystemBackground
+        self.findBar.isHidden = true
+        self.findBar.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(self.findBar)
+        NSLayoutConstraint.activate([
+            self.findBar.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor),
+            self.findBar.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            self.findBar.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+            row.topAnchor.constraint(equalTo: self.findBar.topAnchor, constant: 4),
+            row.leadingAnchor.constraint(equalTo: self.findBar.leadingAnchor, constant: 12),
+            row.trailingAnchor.constraint(equalTo: self.findBar.trailingAnchor, constant: -12),
+            row.bottomAnchor.constraint(equalTo: self.findBar.bottomAnchor, constant: -4)
+        ])
+    }
+
     private func presentFindInComments() {
+        self.findBar.isHidden = false
+        self.view.bringSubviewToFront(self.findBar)
+        self.view.layoutIfNeeded()
+        // Inset the list instead of drawing the bar over the post header.
+        self.findBarPriorInset = self.tableNode.view.contentInset.top
+        self.tableNode.view.contentInset.top = self.findBar.bounds.height
+        self.tableNode.view.verticalScrollIndicatorInsets.top = self.findBar.bounds.height
+        self.findField.becomeFirstResponder()
+    }
+
+    @objc private func findTextChanged(_ field: UITextField) {
+        let query = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.findMatches = Self.matchingRows(in: self.rows, query: query)
+        self.findMatchIndex = 0
+        self.updateFindStatus()
+        if let first = self.findMatches.first {
+            self.tableNode.scrollToRow(at: IndexPath(row: first, section: 1), at: .middle, animated: true)
+        }
+    }
+
+    /// Case- and diacritic-insensitive match over comment bodies only; "more"
+    /// rows carry no text of their own to search.
+    static func matchingRows(in rows: [Row], query: String) -> [Int] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return [] }
+        var matches: [Int] = []
+        for (index, row) in rows.enumerated() {
+            guard case .comment(let comment, _) = row, let body = comment.body else { continue }
+            if body.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil {
+                matches.append(index)
+            }
+        }
+        return matches
+    }
+
+    private func stepMatch(_ delta: Int) {
+        guard !self.findMatches.isEmpty else { return }
+        self.findMatchIndex = (self.findMatchIndex + delta + self.findMatches.count) % self.findMatches.count
+        self.updateFindStatus()
+        self.tableNode.scrollToRow(at: IndexPath(row: self.findMatches[self.findMatchIndex], section: 1),
+                                   at: .middle, animated: true)
+    }
+
+    private func updateFindStatus() {
+        self.findStatus.text = self.findMatches.isEmpty ? "0" : "\(self.findMatchIndex + 1)/\(self.findMatches.count)"
+        self.findStatus.accessibilityLabel = self.findMatches.isEmpty
+            ? "No matches" : "Match \(self.findMatchIndex + 1) of \(self.findMatches.count)"
+    }
+
+    private func endFindInComments() {
+        self.findField.resignFirstResponder()
+        self.findField.text = ""
+        self.findMatches = []
+        self.findMatchIndex = 0
+        self.findStatus.text = ""
+        self.findBar.isHidden = true
+        // Restore whatever inset the screen already had.
+        self.tableNode.view.contentInset.top = self.findBarPriorInset
+        self.tableNode.view.verticalScrollIndicatorInsets.top = 0
     }
 
     // MARK: - Comment actions

@@ -464,6 +464,24 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
     and the next step is the native `spinnerToken`/`noCommentsToken` sections if
     visual parity there matters.
 
+### Find in Comments (verified 2026-10-30)
+
+- Native registers a Find in Comments target (`0x1007026b8`); its exact
+  presentation is unverified, so the rebuild adds a compact bar with a search
+  field, match counter, Previous/Next and Done. Matching is case- and
+  diacritic-insensitive over comment bodies only (authors and "more" rows are not
+  searched — native scope unverified). The loaded tree is never filtered, so
+  collapsing/insertion still operate on real rows.
+- Verified in the isolated mock app PID39482/45451, no crash: menu opens the bar,
+  "Colours" matches "colours" (1/1), cycling gives 1 of 3 → 2 of 3 → 3 of 3 →
+  2 of 3, no-match shows 0 / "No matches", Done hides the bar and restores the
+  exact pre-open layout.
+- Fixed a real layout defect found in verification: the bar originally drew OVER
+  the post header. It now insets the list by the bar height and restores the prior
+  inset on Done; recheck shows the header moves +42 and returns to y=132 exactly.
+- Unverified: scroll-into-view for threads longer than the viewport (fixture fits
+  on screen), keyboard-present layout, and whether native search covers authors.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.
