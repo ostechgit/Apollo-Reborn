@@ -142,6 +142,33 @@ int main(void) { @autoreleasepool {
     CHECK([focused.capturedRequest.URL.path isEqual:@"/comments/post/_/reply.json"]);
     CHECK([parameters[@"context"] isEqual:@"10"]);
     CHECK(!parameters[@"sort"] && !parameters[@"limit"] && !parameters[@"depth"]);
+    // Reporting: captured Apollo payload shapes.
+    StubClient *report = Client();
+    report.payload = @{};
+    [report reportThingWithFullname:@"t1_post" siteReason:@"This is spam" completion:^(NSError *error) {
+        CHECK(!error);
+    }];
+    CHECK([report.capturedRequest.URL.path isEqual:@"/api/report"]);
+    NSURLComponents *reportQuery = [NSURLComponents new];
+    reportQuery.percentEncodedQuery = [[NSString alloc] initWithData:report.capturedRequest.HTTPBody encoding:NSUTF8StringEncoding];
+    NSMutableDictionary *reportValues = [NSMutableDictionary dictionary];
+    for (NSURLQueryItem *item in reportQuery.queryItems) { reportValues[item.name] = item.value; }
+    CHECK([reportValues[@"reason"] isEqual:@"site_reason_selected"]);
+    CHECK([reportValues[@"site_reason"] isEqual:@"This is spam"]);
+    CHECK([reportValues[@"thing_id"] isEqual:@"t1_post"]);
+
+    [report reportThingWithFullname:@"t1_post" ruleReason:@"Keep it civil" completion:^(NSError *error) { CHECK(!error); }];
+    reportQuery.percentEncodedQuery = [[NSString alloc] initWithData:report.capturedRequest.HTTPBody encoding:NSUTF8StringEncoding];
+    [reportValues removeAllObjects];
+    for (NSURLQueryItem *item in reportQuery.queryItems) { reportValues[item.name] = item.value; }
+    CHECK([reportValues[@"reason"] isEqual:@"Keep it civil"]);
+    CHECK([reportValues[@"rule_reason"] isEqual:@"Keep it civil"]);
+
+    StubClient *loggedOutReport = Client();
+    loggedOutReport.authorizationCredential = nil;
+    [loggedOutReport reportThingWithFullname:@"t1_x" siteReason:@"This is spam" completion:^(NSError *error) { CHECK(error); }];
+    CHECK(loggedOutReport.sends == 0);
+
     StubClient *badFocus = Client();
     [badFocus linkAndContext:0 forCommentWithIdentifier:@"../bad" linkIdentifier:@"post" commentSort:RDKCommentSortingMethodDefault pagination:nil completion:^(RDKLink *link, NSArray *comments, NSError *error) { CHECK(error && !link); }];
     CHECK(badFocus.sends == 0);
