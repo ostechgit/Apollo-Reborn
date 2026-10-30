@@ -179,7 +179,6 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     /// How many replies are hidden behind a collapsed comment.
     let hiddenReplyCount: Int
 
-    private let avatarNode = ASNetworkImageNode()
     private let authorNode = ASTextNode()
     private let flairNode = ASTextNode()
     private let pointsNode = ASTextNode()
@@ -234,20 +233,9 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
         self.selectionStyle = .none
         self.backgroundColor = .systemBackground
 
-        // 30pt disc, circular, with a neutral fill for authors Reddit has no
-        // icon for.
-        self.avatarNode.style.preferredSize = CGSize(width: 30, height: 30)
-        self.avatarNode.cornerRadius = 15
-        self.avatarNode.clipsToBounds = true
-        self.avatarNode.backgroundColor = .systemGray5
-        self.avatarNode.contentMode = .scaleAspectFill
-        self.avatarNode.placeholderColor = .systemGray5
-        self.avatarNode.placeholderEnabled = true
-        self.avatarNode.isUserInteractionEnabled = false
-        ApolloUserIcons.shared.icon(forAccount: comment.authorFullName) { [weak self] url in
-            guard let self = self, let url = url else { return }
-            self.avatarNode.url = url
-        }
+        // Stock comment rows draw no avatar: the captured cell subnodes are three
+        // ApolloButtonNodes, an ASTextNode and a MarkdownNode. The disc the rebuild
+        // used to draw was a Reborn addition.
 
         self.bodyNode.delegate = self
         self.bodyNode.linkAttributeNames = [NSAttributedString.Key.link.rawValue]
@@ -457,7 +445,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
         let spacer = ASLayoutSpec()
         spacer.style.flexGrow = 1
 
-        var headerChildren: [ASLayoutElement] = [self.avatarNode, self.authorNode]
+        var headerChildren: [ASLayoutElement] = [self.authorNode]
         if self.flairNode.attributedText != nil {
             headerChildren.append(self.flairNode)
         }
@@ -493,7 +481,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             self.moreOptionsNode.style.spacingBefore = 4
             self.ageNode.style.spacingBefore = 10
         }
-        self.authorNode.style.spacingBefore = 8
+        self.authorNode.style.spacingBefore = 0
         self.pointsNode.style.spacingBefore = 8
 
         let header = ASStackLayoutSpec(direction: .horizontal, spacing: 0,
