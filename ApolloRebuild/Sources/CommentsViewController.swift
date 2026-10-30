@@ -1684,7 +1684,22 @@ class ShareImageViewController: UIViewController {
         self.stack.addArrangedSubview(self.row("Watermark", action: #selector(toggleWatermark), on: true))
 
         self.linkButton.contentHorizontalAlignment = .fill
-        self.linkButton.addAction(UIAction { [weak self] _ in self?.cycleLink() }, for: .touchUpInside)
+        // Stock offers exactly two choices behind the Link row.
+        self.linkButton.showsMenuAsPrimaryAction = true
+        self.linkButton.menu = UIMenu(children: [
+            UIAction(title: "Post Link", state: self.options.link == nil ? .off : .on) { [weak self] _ in
+                guard let self = self else { return }
+                self.options.link = self.link
+                self.updateLinkTitle()
+                self.render()
+            },
+            UIAction(title: "No Link", state: self.options.link == nil ? .on : .off) { [weak self] _ in
+                guard let self = self else { return }
+                self.options.link = nil
+                self.updateLinkTitle()
+                self.render()
+            }
+        ])
         self.stack.addArrangedSubview(self.linkButton)
 
         let share = UIButton(configuration: .filled())
@@ -1743,17 +1758,8 @@ class ShareImageViewController: UIViewController {
         self.render()
     }
 
-    /// Stock shows "No Link" and offers alternatives; cycling keeps the control
-    /// honest without inventing its picker.
-    private func cycleLink() {
-        guard self.link != nil else { return }
-        self.options.link = self.options.link == nil ? self.link : nil
-        self.updateLinkTitle()
-        self.render()
-    }
-
     private func updateLinkTitle() {
-        self.linkButton.setTitle(self.options.link == nil ? "Link: No Link" : "Link: Permalink", for: .normal)
+        self.linkButton.setTitle(self.options.link == nil ? "No Link" : "Post Link", for: .normal)
     }
 
     private func render() {
