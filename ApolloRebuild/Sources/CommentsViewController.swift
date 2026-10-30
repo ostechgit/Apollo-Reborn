@@ -345,7 +345,11 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 self.collapsedComments.insert(name)
             }
         }
-        self.reloadVisibleRows()
+        // Every collapsed header changes appearance, so reload them all.
+        self.reloadVisibleRows(reloading: Set(self.tree.compactMap {
+            if case .comment(let comment, _) = $0 { return comment.fullName }
+            return nil
+        }))
     }
 
     // MARK: - Actions
@@ -688,10 +692,50 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     }
 
     /// Redraws after a collapse/expand.
-    private func reloadVisibleRows() {
+    ///
+    /// Stock drives this through its list adapter's
+    /// `performBatchAnimated:updates:completion:` (0x100173230), i.e. it deletes
+    /// and inserts just the rows that appeared or disappeared and reloads the
+    /// toggled comment. A `reloadData()` here flashes the whole screen, which the
+    /// original never does.
+    private func reloadVisibleRows(reloading names: Set<String> = []) {
         DispatchQueue.main.async {
+            let previous = self.rows
             self.rebuildRows()
-            self.tableNode.reloadData()
+            let current = self.rows
+
+            func identity(_ row: Row) -> String {
+                switch row {
+                case .comment(let comment, _): return comment.fullName ?? "c:\(ObjectIdentifier(comment))"
+                case .more(let more, _): return more.fullName ?? "m:\(ObjectIdentifier(more))"
+                }
+            }
+
+            let previousIDs = previous.map(identity)
+            let currentIDs = current.map(identity)
+            let previousSet = Set(previousIDs)
+            let currentSet = Set(currentIDs)
+
+            // No structural change and nothing to redraw: stay put.
+            if previousIDs == currentIDs && names.isEmpty { return }
+
+            let deleted = previousIDs.enumerated()
+                .filter { !currentSet.contains($0.element) }
+                .map { IndexPath(row: $0.offset, section: 1) }
+            let inserted = currentIDs.enumerated()
+                .filter { !previousSet.contains($0.element) }
+                .map { IndexPath(row: $0.offset, section: 1) }
+            let reloaded = currentIDs.enumerated()
+                .filter { names.contains($0.element) && previousSet.contains($0.element) }
+                .map { IndexPath(row: $0.offset, section: 1) }
+
+            guard !deleted.isEmpty || !inserted.isEmpty || !reloaded.isEmpty else { return }
+
+            self.tableNode.performBatch(animated: true, updates: {
+                if !deleted.isEmpty { self.tableNode.deleteRows(at: deleted, with: .fade) }
+                if !inserted.isEmpty { self.tableNode.insertRows(at: inserted, with: .fade) }
+                if !reloaded.isEmpty { self.tableNode.reloadRows(at: reloaded, with: .none) }
+            }, completion: nil)
         }
     }
 
@@ -707,7 +751,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         } else {
             self.collapsedComments.insert(name)
         }
-        self.reloadVisibleRows()
+        self.reloadVisibleRows(reloading: [name])
     }
 
     /// fullname -> the fullname of the comment it replies to, so a comment's
@@ -732,7 +776,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.collapsedComments.insert(parent)
             current = parents[parent]
         }
-        self.reloadVisibleRows()
+        self.reloadVisibleRows(reloading: Set(self.collapsedComments))
     }
 
     /// `moreDepth` is the depth of the comment whose replies these are. The
