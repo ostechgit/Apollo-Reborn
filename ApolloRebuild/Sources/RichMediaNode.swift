@@ -32,6 +32,15 @@ class RichMediaNode: ASControlNode {
 
     private let imageNode = ASNetworkImageNode()
     private let playNode = ASImageNode()
+    /// NSFW and spoiler posts are blurred behind a centred badge until the
+    /// reader taps. The badge assets are the original's `obscured-nsfw` /
+    /// `obscured-spoiler`; they are small glyphs, NOT a full-frame overlay, so
+    /// the blur is what actually hides the picture.
+    private let blurNode = ASDisplayNode(viewBlock: {
+        UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterialDark))
+    })
+    private let veilNode = ASImageNode()
+    private var isVeiled: Bool
     private let cardNode: LinkButtonNode?
 
     /// Portrait images are cropped rather than allowed to run past this many
@@ -48,6 +57,7 @@ class RichMediaNode: ASControlNode {
         let isRedditMedia = link.isImageLink || link.isVideo || link.isGallery
         self.presentation = isRedditMedia ? .fullBleed : .linkCard
         self.cardNode = isRedditMedia ? nil : LinkButtonNode(link: link)
+        self.isVeiled = link.isNSFW || link.isSpoiler
         super.init()
         self.automaticallyManagesSubnodes = true
         self.cardNode?.isUserInteractionEnabled = false
@@ -58,6 +68,15 @@ class RichMediaNode: ASControlNode {
         self.imageNode.placeholderEnabled = true
         // The node itself is the tap target, so no child may swallow the touch.
         self.imageNode.isUserInteractionEnabled = false
+        self.blurNode.isUserInteractionEnabled = false
+        self.veilNode.contentMode = .center
+        self.veilNode.isUserInteractionEnabled = false
+        // The catalog rendition is a black diamond with a white "!", so it must
+        // not be template-tinted.
+        if let badge = ApolloAssets.originalImage(named: link.isNSFW ? "obscured-nsfw" : "obscured-spoiler") {
+            self.veilNode.image = badge
+            self.veilNode.style.preferredSize = badge.size
+        }
 
         self.playNode.image = ApolloAssets.originalImage(named: "video-playhead-large")
         self.playNode.style.preferredSize = CGSize(width: 48, height: 48)
@@ -91,6 +110,14 @@ class RichMediaNode: ASControlNode {
             let natural = CGFloat(item?.height ?? 0) / CGFloat(max(item?.width ?? 0, 1))
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
             var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
+            if self.isVeiled {
+                // Blur the picture, then centre the badge over it.
+                media = ASOverlayLayoutSpec(child: media, overlay: self.blurNode)
+                media = ASOverlayLayoutSpec(child: media,
+                                            overlay: ASCenterLayoutSpec(centeringOptions: .XY,
+                                                                        sizingOptions: [],
+                                                                        child: self.veilNode))
+            }
 
             if self.link.isVideo {
                 media = ASOverlayLayoutSpec(child: media,
@@ -105,6 +132,14 @@ class RichMediaNode: ASControlNode {
     // MARK: - Actions
 
     @objc private func mediaTapped() {
+        // First tap lifts an NSFW/spoiler veil; the reader has to tap again to
+        // open the media, which is how the original treats obscured posts.
+        if self.isVeiled {
+            self.isVeiled = false
+            self.setNeedsLayout()
+            self.transitionLayout(withAnimation: true, shouldMeasureAsync: false)
+            return
+        }
         self.onTapped?()
     }
 }

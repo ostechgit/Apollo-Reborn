@@ -259,6 +259,15 @@ class Handler(BaseHTTPRequestHandler):
                     post = thread[0]['data']['children'][0]['data']
                     post['stickied'] = True
                     post['locked'] = True
+                    # Mock-only veil target: the post is marked NSFW. It also
+                    # needs a preview, or the detail header has no media at all.
+                    post['over_18'] = True
+                    post['post_hint'] = 'image'
+                    image = self.base() + 'img/1200x900/photo.png'
+                    post['url'] = image
+                    post['preview'] = {'images': [{
+                        'source': {'url': image, 'width': 1200, 'height': 900},
+                        'resolutions': [{'url': image, 'width': 1200, 'height': 900}]}]}
                     first = thread[1]['data']['children'][0]['data']
                     first['stickied'] = True
                     reply = first['replies']['data']['children'][0]['data']
