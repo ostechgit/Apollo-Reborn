@@ -673,6 +673,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                     hidden += 1
                 case .more(let more, _):
                     guard let parent = more.parentID, descendants.contains(parent) else { break descendantsLoop }
+                    // A stub stands for the replies it has not loaded, so the
+                    // badge counts them too instead of showing only loaded rows.
+                    hidden += max(more.count, 0)
                 }
                 scan += 1
             }

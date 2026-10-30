@@ -26,7 +26,7 @@ class RDKComment: RDKThing {
     }
 }
 class RDKMoreComments: RDKThing {
-    var parentID: String?; var depth: Int
+    var parentID: String?; var depth: Int; var count: Int = 0
     init(_ name: String, _ parent: String, _ depth: Int) {
         self.parentID = parent; self.depth = depth; super.init(name)
     }
@@ -49,6 +49,7 @@ let a = RDKComment("a", "post", 0)
 let b = RDKComment("b", "a", 1)
 let c = RDKComment("c", "post", 0)
 let moreA = RDKMoreComments("more-a", "a", 1)
+moreA.count = 3
 let moreB = RDKMoreComments("more-b", "b", 2)
 let rootMore = RDKMoreComments("root-more", "post", 0)
 b.replies = [moreB]; a.replies = [b, moreA]
@@ -56,7 +57,8 @@ let tree = C.flatten([a, c, rootMore], depth: 0)
 assert(names(tree) == ["a", "b", "more-b", "more-a", "c", "root-more"])
 let (collapsedA, countsA) = C.visibleRows(in: tree, collapsed: ["a"])
 assert(names(collapsedA) == ["a", "c", "root-more"])
-assert(countsA["a"] == 1)
+// a loaded reply plus whatever the nested stub stands for
+assert(countsA["a"] == 1 + moreA.count)
 let (collapsedB, _) = C.visibleRows(in: tree, collapsed: ["b"])
 assert(names(collapsedB) == ["a", "b", "more-a", "c", "root-more"])
 assert(names(C.visibleRows(in: tree, collapsed: []).0) == names(tree))
