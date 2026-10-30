@@ -20,7 +20,7 @@ stubs = '''
 import Foundation
 class RDKThing { var fullName: String?; init(_ name: String) { fullName = name } }
 class RDKComment: RDKThing {
-    var parentID: String?; var depth: Int; var replies: [RDKThing]?; var body: String?
+    var parentID: String?; var depth: Int; var replies: [RDKThing]?; var body: String?; var author: String?
     init(_ name: String, _ parent: String, _ depth: Int) {
         self.parentID = parent; self.depth = depth; super.init(name)
     }
@@ -35,7 +35,8 @@ struct CommentsViewController {
 '''
 helpers = "\n".join(declaration(marker) for marker in [
     "enum Row {", "static func flatten(", "static func visibleRows(", "static func rowsFromMoreChildren(",
-    "static func insertingSubmittedComment(", "static func mergingParents(", "static func matchingRows("
+    "static func insertingSubmittedComment(", "static func mergingParents(", "static func matchingRows(",
+    "static func selectableText(forComment"
 ])
 tests = '''
 }
@@ -94,6 +95,15 @@ if case .comment(_, let depth) = merged[5] { assert(depth == 0) } else { fatalEr
 assert(names(C.mergingParents([ancestor], into: merged)) == names(merged))
 assert(names(C.mergingParents([], into: tree)) == names(tree))
 a.body = "Incredible COLOURS, café"; b.body = "no match here"; c.body = nil
+a.author = "first_commenter"
+let selectable = C.selectableText(forComment: a)
+assert(selectable.hasPrefix("u/first_commenter:"))
+assert(selectable.hasSuffix("Incredible COLOURS, café"))
+a.author = nil
+assert(C.selectableText(forComment: a) == "Incredible COLOURS, café")
+a.body = nil
+assert(C.selectableText(forComment: a) == "")
+a.body = "Incredible COLOURS, café"; a.author = "first_commenter"
 assert(C.matchingRows(in: tree, query: "colours") == [0])
 assert(C.matchingRows(in: tree, query: "cafe") == [0])
 assert(C.matchingRows(in: tree, query: "  ") == [])

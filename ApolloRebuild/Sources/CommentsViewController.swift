@@ -305,7 +305,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                                  image: ApolloAssets.image(named: "option-collapse-child-comments")) { [weak self] _ in
             self?.collapseAllTopLevelComments()
         })
-        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { _ in })
+        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { [weak self] _ in
+            self?.selectTextForPost()
+        })
         children.append(UIAction(title: "Share", image: ApolloAssets.image(named: "option-share")) { [weak self] _ in
             self?.share()
         })
@@ -945,7 +947,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 self?.openAuthor(author)
             })
         }
-        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { _ in })
+        children.append(UIAction(title: "Select Text", image: ApolloAssets.image(named: "option-select-mode")) { [weak self] _ in
+            self?.selectTextForComment(comment)
+        })
         children.append(UIAction(title: "Share", image: ApolloAssets.image(named: "option-share")) { [weak self] _ in
             self?.share(comment)
         })
@@ -1082,6 +1086,40 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.tableNode.view.verticalScrollIndicatorInsets.top = 0
     }
 
+    // MARK: - Select Text
+
+    /// The original's "Select Text" presentation is unverified (no saved
+    /// decompile evidence for it), so this shows the plain text in a read-only
+    /// selectable view rather than guessing the native chrome.
+    static func selectableText(forComment comment: RDKComment) -> String {
+        let body = comment.body ?? ""
+        guard let author = comment.author, !author.isEmpty else { return body }
+        return "u/\(author):\n\n\(body)"
+    }
+
+    static func selectableText(forLink link: RDKLink) -> String {
+        var parts: [String] = []
+        if let title = link.title, !title.isEmpty { parts.append(title) }
+        if let body = link.selfText, !body.isEmpty { parts.append(body) }
+        if let url = link.url, !url.isEmpty { parts.append(url) }
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func selectTextForComment(_ comment: RDKComment) {
+        self.presentSelectableText(Self.selectableText(forComment: comment), title: "Comment Text")
+    }
+
+    private func selectTextForPost() {
+        self.presentSelectableText(Self.selectableText(forLink: self.link), title: "Post Text")
+    }
+
+    private func presentSelectableText(_ text: String, title: String) {
+        let controller = SelectableTextViewController(text: text, title: title)
+        let navigation = UINavigationController(rootViewController: controller)
+        navigation.modalPresentationStyle = .pageSheet
+        self.present(navigation, animated: true)
+    }
+
     // MARK: - Comment actions
 
     private func vote(_ comment: RDKComment, _ direction: RDKVoteDirection) {
@@ -1155,5 +1193,46 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         case .comment(let comment, _):
             self.toggleCollapse(comment)
         }
+    }
+}
+
+// SelectableTextViewController - read-only, selectable text for the
+// "Select Text" action. Presentation parity with the original is unverified.
+class SelectableTextViewController: UIViewController {
+
+    private let text: String
+    private let heading: String
+    private let textView = UITextView()
+
+    init(text: String, title: String) {
+        self.text = text
+        self.heading = title
+        super.init(nibName: nil, bundle: nil)
+        self.title = title
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.view.backgroundColor = .systemBackground
+        self.textView.text = self.text
+        self.textView.isEditable = false
+        self.textView.isSelectable = true
+        self.textView.alwaysBounceVertical = true
+        self.textView.font = UIFont.preferredFont(forTextStyle: .body)
+        self.textView.accessibilityLabel = self.heading
+        self.textView.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(self.textView)
+        NSLayoutConstraint.activate([
+            self.textView.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor),
+            self.textView.leadingAnchor.constraint(equalTo: self.view.leadingAnchor, constant: 16),
+            self.textView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -16),
+            self.textView.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor)
+        ])
+        self.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
+            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
     }
 }
