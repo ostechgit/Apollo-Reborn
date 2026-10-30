@@ -1,6 +1,7 @@
 import UIKit
 import AsyncDisplayKit
 import SafariServices
+import UserNotifications
 import AVKit
 
 // Header actions share the same controller operations as the post menu. This
@@ -322,7 +323,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         })
         items.append(self.action("Select Text", "option-select-mode") { [weak self] in self?.selectTextForPost() })
         items.append(self.action("Share", "option-share") { [weak self] in self?.share() })
-        items.append(self.action("Share as Image\u{2026}", "option-share-as-image") {})
+        items.append(self.action("Share as Image\u{2026}", "option-share-as-image") { [weak self] in
+            self?.presentShareImage(forLink: self?.link)
+        })
         items.append(self.action("Crosspost", "option-crosspost") {})
         items.append(self.action("Find in Comments", "option-search") { [weak self] in
             self?.presentFindInComments()
@@ -966,7 +969,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self?.selectTextForComment(comment)
         })
         items.append(self.action("Share", "option-share") { [weak self] in self?.share(comment) })
-        items.append(self.action("Share as Image\u{2026}", "option-share-as-image") {})
+        items.append(self.action("Share as Image\u{2026}", "option-share-as-image") { [weak self] in
+            self?.presentShareImage(forComment: comment)
+        })
         items.append(self.action("Collapse to Top", "option-collapse-to-top") { [weak self] in
             self?.collapseToTop(comment)
         })
@@ -1126,6 +1131,112 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 1, height: 1)
         }
         self.present(sheet, animated: true)
+    }
+
+
+    // MARK: - Remind me (local notification)
+
+    /// Stock's Remind Me is local, not an API call: it schedules a notification
+    /// through RemindMeInViewController. Captured text and default duration are
+    /// reproduced here; the Date picker entry point and the reminder list screen
+    /// are still missing.
+    private func presentReminder(forComment comment: RDKComment) {
+        let controller = ReminderViewController { [weak self] date in
+            self?.scheduleReminder(for: comment, at: date)
+        }
+        self.present(UINavigationController(rootViewController: controller), animated: true)
+    }
+
+    private func scheduleReminder(for comment: RDKComment, at date: Date) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                guard granted else {
+                    let alert = UIAlertController(title: "Notifications Off",
+                        message: "Allow notifications to be reminded about this comment.",
+                        preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                    return
+                }
+                let content = UNMutableNotificationContent()
+                content.title = "Reminder"
+                content.body = comment.body ?? "Comment reminder"
+                content.sound = .default
+                let trigger = UNTimeIntervalNotificationTrigger(
+                    timeInterval: max(60, date.timeIntervalSinceNow), repeats: false)
+                center.add(UNNotificationRequest(identifier: "apollo-reminder-\(comment.fullName ?? UUID().uuidString)",
+                                                 content: content, trigger: trigger))
+                Holla.showStatus("Reminder Set", text: nil, fromViewController: self)
+            }
+        }
+    }
+
+    // MARK: - Share as image
+
+    /// Stock renders the item into a card and shares the image. This draws the
+    /// same content (title, body, meta, watermark) without the preview sheet's
+    /// toggles, which are still unimplemented.
+    private func presentShareImage(forLink link: RDKLink?) {
+        guard let link = link else { return }
+        var lines = [link.title ?? ""]
+        if let body = link.selfText, !body.isEmpty { lines.append(body) }
+        let meta = "in r/\(link.subreddit ?? "") by u/\(link.author ?? "")"
+        self.shareRenderedCard(lines: lines.filter { !$0.isEmpty }, meta: meta)
+    }
+
+    private func presentShareImage(forComment comment: RDKComment) {
+        let meta = "u/\(comment.author ?? "") · \(comment.score) points"
+        self.shareRenderedCard(lines: [comment.body ?? ""], meta: meta)
+    }
+
+    private func shareRenderedCard(lines: [String], meta: String) {
+        let width: CGFloat = 340
+        let inset: CGFloat = 16
+        let bodyFont = UIFont.systemFont(ofSize: 15)
+        let titleFont = UIFont.boldSystemFont(ofSize: 17)
+        var height: CGFloat = 0
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 2
+        let measured: [(String, CGRect)] = lines.enumerated().map { index, text in
+            let font = index == 0 ? titleFont : bodyFont
+            let bounds = (text as NSString).boundingRect(with: CGSize(width: width - inset * 2, height: .greatestFiniteMagnitude),
+                                                        options: [.usesLineFragmentOrigin],
+                                                        attributes: [.font: font, .paragraphStyle: paragraph], context: nil)
+            let rect = CGRect(x: inset, y: height, width: width - inset * 2, height: ceil(bounds.height))
+            height += ceil(bounds.height) + 10
+            return (text, rect)
+        }
+        height += 46   // meta + watermark rows
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
+        let image = renderer.image { context in
+            UIColor.systemBackground.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            for (index, entry) in measured.enumerated() {
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: index == 0 ? titleFont : bodyFont,
+                    .foregroundColor: index == 0 ? UIColor.label : UIColor.secondaryLabel,
+                    .paragraphStyle: paragraph,
+                ]
+                (entry.0 as NSString).draw(in: entry.1, withAttributes: attributes)
+            }
+            let metaAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 12),
+                .foregroundColor: UIColor.secondaryLabel,
+            ]
+            (meta as NSString).draw(at: CGPoint(x: inset, y: height - 30), withAttributes: metaAttributes)
+            let mark = "via Apollo" as NSString
+            let size = mark.size(withAttributes: metaAttributes)
+            mark.draw(at: CGPoint(x: width - inset - size.width, y: height - 30), withAttributes: metaAttributes)
+        }
+        let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        if let popover = activity.popoverPresentationController {
+            popover.sourceView = self.view
+            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 1, height: 1)
+        }
+        self.present(activity, animated: true)
     }
 
     // MARK: - Find in Comments
@@ -1395,5 +1506,57 @@ class SelectableTextViewController: UIViewController {
         ])
         self.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+    }
+}
+
+// ReminderViewController - the "Reminder" sheet: a duration wheel and an Add
+// button. Captured from stock Apollo, whose reminder is a local notification.
+class ReminderViewController: UIViewController {
+
+    private let onSchedule: (Date) -> Void
+    private let picker = UIDatePicker()
+
+    init(onSchedule: @escaping (Date) -> Void) {
+        self.onSchedule = onSchedule
+        super.init(nibName: nil, bundle: nil)
+        self.title = "Reminder"
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.view.backgroundColor = .systemBackground
+
+        let label = UILabel()
+        label.text = "Send me a reminder notification about this comment in\u{2026}"
+        label.numberOfLines = 0
+        label.font = .preferredFont(forTextStyle: .headline)
+
+        self.picker.datePickerMode = .countDownTimer
+        self.picker.countDownDuration = 2 * 60 * 60   // stock defaults to 2 hours
+
+        let stack = UIStackView(arrangedSubviews: [label, self.picker])
+        stack.axis = .vertical
+        stack.spacing = 20
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            stack.leadingAnchor.constraint(equalTo: self.view.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -20)
+        ])
+
+        self.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel,
+            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        self.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
+            primaryAction: UIAction { [weak self] _ in
+                guard let self = self else { return }
+                let date = Date().addingTimeInterval(self.picker.countDownDuration)
+                self.onSchedule(date)
+                self.dismiss(animated: true)
+            })
     }
 }
