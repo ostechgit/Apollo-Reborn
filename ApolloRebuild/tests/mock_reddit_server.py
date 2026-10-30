@@ -157,8 +157,26 @@ class Handler(BaseHTTPRequestHandler):
 
         if parts and parts[-1].endswith('.json'):
             last = parts[-1][:-5]
-            if parts[0] == 'comments' and len(parts) == 2:
-                return self.send_json(localize_media(load('comments-thread.json'), self.base()))
+            if parts[0] == 'comments' and len(parts) in (2, 4):
+                thread = load('comments-thread.json')
+                if len(parts) == 4:
+                    if parts[2] != '_' or last != 'c002' or query.get('context') != ['0']:
+                        return self.send_json({'message': 'Unknown mock comment context'}, 404)
+                    parent = copy.deepcopy(thread[1]['data']['children'][0]['data']['replies']['data']['children'][0])
+                    parent['data']['depth'] = 0
+                    parent['data']['replies'] = {'kind': 'Listing', 'data': {'children': [
+                        {'kind': 't1', 'data': {'id': 'continued', 'name': 't1_continued',
+                         'parent_id': 't1_c002', 'link_id': 't3_1fx0002', 'author': 'continued_user',
+                         'body': 'Local continued thread reply', 'score': 3, 'depth': 1, 'replies': ''}}
+                    ]}}
+                    thread[1]['data']['children'] = [parent]
+                else:
+                    parent = thread[1]['data']['children'][0]['data']['replies']['data']['children'][0]
+                    parent['data']['replies'] = {'kind': 'Listing', 'data': {'children': [
+                        {'kind': 'more', 'data': {'count': 0, 'name': 't1_continue', 'id': 'continue',
+                         'parent_id': 't1_c002', 'depth': 2, 'children': []}}
+                    ]}}
+                return self.send_json(localize_media(thread, self.base()))
             is_listing = (len(parts) == 1 and last in SORTS) or (parts[0] == 'r' and len(parts) == 3 and last in SORTS) \
                 or (parts[0] == 'user' and last == 'submitted')
             if is_listing:

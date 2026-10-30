@@ -45,6 +45,18 @@ class CommentSubmitTests(unittest.TestCase):
             self.assertEqual(thing["data"]["parent_id"], target)
             self.assertEqual(thing["data"]["body"], text)
 
+    def test_continue_thread_context(self):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.server.server_port}/comments/1fx0002/_/c002.json?context=0&limit=100",
+            headers={"Authorization": "bearer mock-user"})
+        with urllib.request.urlopen(request) as response:
+            thread = json.load(response)
+        parent = thread[1]["data"]["children"][0]["data"]
+        self.assertEqual(parent["name"], "t1_c002")
+        child = parent["replies"]["data"]["children"][0]["data"]
+        self.assertEqual(child["parent_id"], "t1_c002")
+        self.assertEqual(child["body"], "Local continued thread reply")
+
     def test_successful_writes_have_distinct_identity(self):
         first = self.submit("t3_mock", "first")["json"]["data"]["things"][0]["data"]
         second = self.submit("t3_mock", "second")["json"]["data"]["things"][0]["data"]

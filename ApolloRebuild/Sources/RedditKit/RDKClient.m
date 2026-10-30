@@ -449,6 +449,27 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     NSString *bareIdentifier = [identifier hasPrefix:@"t3_"] ? [identifier substringFromIndex:3] : identifier;
     NSString *path = [NSString stringWithFormat:@"comments/%@.json", bareIdentifier];
 
+    return [self linkAndCommentsTaskWithPath:path parameters:parameters completion:completion];
+}
+
+// Native 0x100039968: focused path rather than api/morechildren.
+- (NSURLSessionDataTask *)linkAndContext:(NSInteger)context forCommentWithIdentifier:(NSString *)commentIdentifier linkIdentifier:(NSString *)linkIdentifier commentSort:(RDKCommentSortingMethod)sort pagination:(RDKPagination *)pagination completion:(RDKLinkAndCommentsCompletionBlock)completion {
+    NSString *post = [linkIdentifier hasPrefix:@"t3_"] ? [linkIdentifier substringFromIndex:3] : linkIdentifier;
+    NSString *comment = [commentIdentifier hasPrefix:@"t1_"] ? [commentIdentifier substringFromIndex:3] : commentIdentifier;
+    NSCharacterSet *invalid = [[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"] invertedSet];
+    if (!post.length || !comment.length || [post rangeOfCharacterFromSet:invalid].location != NSNotFound || [comment rangeOfCharacterFromSet:invalid].location != NSNotFound || context < 0) {
+        completion(nil, nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Invalid comment context target."]);
+        return nil;
+    }
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithObject:@(context) forKey:@"context"];
+    NSString *sortName = RDKStringFromCommentSortingMethod(sort);
+    if (sortName) { parameters[@"sort"] = sortName; }
+    if (pagination.limit > 0) { parameters[@"limit"] = @(pagination.limit); }
+    NSString *path = [NSString stringWithFormat:@"comments/%@/_/%@.json", post, comment];
+    return [self linkAndCommentsTaskWithPath:path parameters:parameters completion:completion];
+}
+
+- (NSURLSessionDataTask *)linkAndCommentsTaskWithPath:(NSString *)path parameters:(NSDictionary *)parameters completion:(RDKLinkAndCommentsCompletionBlock)completion {
     return [self getPath:path parameters:parameters completion:^(id response, NSError *error) {
         if (error) {
             completion(nil, nil, error);

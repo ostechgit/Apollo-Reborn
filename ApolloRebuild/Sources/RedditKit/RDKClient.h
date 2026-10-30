@@ -101,6 +101,8 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 
 - (nullable NSURLSessionDataTask *)commentsForLinkWithIdentifier:(NSString *)identifier sort:(RDKCommentSortingMethod)sort limit:(NSInteger)limit completion:(RDKArrayCompletionBlock)completion;
 - (nullable NSURLSessionDataTask *)linkAndCommentsForLinkWithIdentifier:(NSString *)identifier commentSort:(RDKCommentSortingMethod)sort pagination:(nullable RDKPagination *)pagination completion:(RDKLinkAndCommentsCompletionBlock)completion NS_SWIFT_NAME(linkAndComments(forLinkWithIdentifier:commentSort:pagination:completion:));
+// Focused native thread route (comments/<post>/_/<comment>.json).
+- (nullable NSURLSessionDataTask *)linkAndContext:(NSInteger)context forCommentWithIdentifier:(NSString *)commentIdentifier linkIdentifier:(NSString *)linkIdentifier commentSort:(RDKCommentSortingMethod)sort pagination:(nullable RDKPagination *)pagination completion:(RDKLinkAndCommentsCompletionBlock)completion NS_SWIFT_NAME(linkAndContext(_:forCommentWithIdentifier:linkIdentifier:commentSort:pagination:completion:));
 // Expands a "load more comments" stub (api/morechildren); returns the comments as a flat list
 - (nullable NSURLSessionDataTask *)moreComments:(RDKMoreComments *)moreComments forLink:(RDKLink *)link sort:(RDKCommentSortingMethod)sort completion:(RDKArrayCompletionBlock)completion;
 

@@ -135,6 +135,11 @@ static void TestComments(NSArray *response) {
 
     RDKMoreComments *continueThread = top[2];
     CHECK([continueThread isKindOfClass:[RDKMoreComments class]] && continueThread.isContinueThread, @"continue-thread stub");
+    RDKMoreComments *countBased = [RDKMoreComments new];
+    countBased.count = 2; countBased.children = @[];
+    CHECK(!countBased.isContinueThread, @"positive count with empty children is not Continue Thread");
+    countBased.count = 0; countBased.children = @[@"child"];
+    CHECK(countBased.isContinueThread, @"zero count determines Continue Thread, not children");
 }
 
 static void TestPagination(void) {

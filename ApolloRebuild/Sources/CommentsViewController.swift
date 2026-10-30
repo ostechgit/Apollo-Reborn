@@ -105,8 +105,15 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Apollo's floating "jump to the next comment" button, bottom right.
     private let jumpButton = UIButton(type: .custom)
     private var jumpTarget = 0
-    init(link: RDKLink) {
+    private let focusedCommentID: String?
+    private let context: Int?
+    private let continuingThread: Bool
+
+    init(link: RDKLink, commentID: String? = nil, context: Int? = nil, continuingThread: Bool = false) {
         self.link = link
+        self.focusedCommentID = commentID
+        self.context = context
+        self.continuingThread = continuingThread
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -501,9 +508,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         }
         self.sortItem?.menu = self.sortMenu()
         LogBuddy.debug("Comments: load \(self.link.identifier ?? "nil") sort=\(self.commentSort.rawValue)")
-        self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
-                                           commentSort: self.commentSort,
-                                           pagination: nil) { [weak self] link, comments, error in
+        let completion: RDKLinkAndCommentsCompletionBlock = { [weak self] link, comments, error in
             DispatchQueue.main.async {
                 guard let self = self, generation == self.loadGeneration else { return }
                 self.threadTask = nil
@@ -520,6 +525,16 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 self.tableNode.reloadData()
                 LogBuddy.debug("Comments: loaded \(self.rows.count) visible rows")
             }
+        }
+        if let commentID = self.focusedCommentID {
+            // Stock 0x100722d24: nil context resolves to zero for Continue
+            // Thread, two for ordinary comment permalinks; focused limit is 100.
+            self.threadTask = RDKClient.shared().linkAndContext(self.context ?? (self.continuingThread ? 0 : 2),
+                forCommentWithIdentifier: commentID, linkIdentifier: self.link.identifier ?? "",
+                commentSort: self.commentSort, pagination: RDKPagination(limit: 100), completion: completion)
+        } else {
+            self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
+                commentSort: self.commentSort, pagination: nil, completion: completion)
         }
     }
 
@@ -632,7 +647,15 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     // MARK: - Expanding "more replies"
 
     private func expand(_ more: RDKMoreComments) {
-        guard !more.isContinueThread, let key = more.fullName, !self.expandingMore.contains(key) else { return }
+        if more.isContinueThread {
+            // Native dispatcher 0x10071ba78 pushes a separate focused thread.
+            guard let parent = more.parentID, parent.hasPrefix("t1_"), parent.count > 3 else { return }
+            let controller = CommentsViewController(link: self.link,
+                commentID: String(parent.dropFirst(3)), continuingThread: true)
+            self.navigationController?.pushViewController(controller, animated: true)
+            return
+        }
+        guard let key = more.fullName, !self.expandingMore.contains(key) else { return }
         self.expandingMore.insert(key)
         let generation = self.loadGeneration
 

@@ -103,6 +103,40 @@ int main(void) { @autoreleasepool {
     StubClient *empty = Client();
     [empty submitComment:@" \n" onThingWithFullName:@"t3_post" completion:^(RDKComment *comment, NSError *error) { CHECK(!comment && error); }];
     CHECK(empty.sends == 0);
+    // Focused-comment reads share the production parser but use the stock path.
+    StubClient *focused = Client();
+    focused.payload = @[@{@"kind": @"Listing", @"data": @{@"children": @[
+        @{@"kind": @"t3", @"data": @{@"id": @"post", @"name": @"t3_post", @"title": @"Local"}}]}},
+        @{@"kind": @"Listing", @"data": @{@"children": @[@{@"kind": @"t1", @"data": Fields(@"t3_post")}]}}];
+    __block NSInteger readCompletions = 0;
+    [focused linkAndContext:0 forCommentWithIdentifier:@"t1_reply" linkIdentifier:@"t3_post" commentSort:RDKCommentSortingMethodNew pagination:[RDKPagination paginationWithLimit:100] completion:^(RDKLink *link, NSArray *comments, NSError *error) {
+        readCompletions++; CHECK(!error && link && comments.count == 1);
+    }];
+    CHECK(readCompletions == 1 && focused.sends == 1);
+    CHECK([focused.capturedRequest.HTTPMethod isEqual:@"GET"]);
+    CHECK([focused.capturedRequest.URL.path isEqual:@"/comments/post/_/reply.json"]);
+    NSURLComponents *query = [NSURLComponents componentsWithURL:focused.capturedRequest.URL resolvingAgainstBaseURL:NO];
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
+    for (NSURLQueryItem *item in query.queryItems) { parameters[item.name] = item.value; }
+    CHECK([parameters[@"context"] isEqual:@"0"]);
+    CHECK([parameters[@"sort"] isEqual:@"new"]);
+    CHECK([parameters[@"limit"] isEqual:@"100"]);
+    [focused linkAndContext:2 forCommentWithIdentifier:@"reply" linkIdentifier:@"post" commentSort:RDKCommentSortingMethodDefault pagination:nil completion:^(RDKLink *link, NSArray *comments, NSError *error) { CHECK(!error && link); }];
+    query = [NSURLComponents componentsWithURL:focused.capturedRequest.URL resolvingAgainstBaseURL:NO];
+    [parameters removeAllObjects];
+    for (NSURLQueryItem *item in query.queryItems) { parameters[item.name] = item.value; }
+    CHECK([parameters[@"context"] isEqual:@"2"]);
+    CHECK(!parameters[@"sort"] && !parameters[@"limit"]);
+    // Existing full-thread callers retain the unfocused route and depth.
+    [focused linkAndCommentsForLinkWithIdentifier:@"t3_post" commentSort:RDKCommentSortingMethodNew pagination:nil completion:^(RDKLink *link, NSArray *comments, NSError *error) { CHECK(!error && link); }];
+    CHECK([focused.capturedRequest.URL.path isEqual:@"/comments/post.json"]);
+    query = [NSURLComponents componentsWithURL:focused.capturedRequest.URL resolvingAgainstBaseURL:NO];
+    [parameters removeAllObjects];
+    for (NSURLQueryItem *item in query.queryItems) { parameters[item.name] = item.value; }
+    CHECK([parameters[@"depth"] isEqual:@"20"] && !parameters[@"context"]);
+    StubClient *badFocus = Client();
+    [badFocus linkAndContext:0 forCommentWithIdentifier:@"../bad" linkIdentifier:@"post" commentSort:RDKCommentSortingMethodDefault pagination:nil completion:^(RDKLink *link, NSArray *comments, NSError *error) { CHECK(error && !link); }];
+    CHECK(badFocus.sends == 0);
     printf("%d checks, %d failures (actual client; no network)\n", checks, failures);
     return failures ? 1 : 0;
 } }

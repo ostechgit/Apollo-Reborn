@@ -365,6 +365,33 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
   ordinary morechildren loading, not enough to establish Continue-thread routing.
   Do not assume that row should use morechildren; trace its earlier dispatcher.
 
+### Continue Thread implementation (2026-10-30, in progress)
+
+- Saved original dispatcher `0x10071ba78` (incorrect recovered name
+  AccountManager.getProperAccount) branches on `more.count < 1`, validates a t1
+  parent, strips its prefix, and pushes a new CommentsVC with continuingThread=true
+  and nil context. Ordinary positive-count loading goes to `0x1007237ec`.
+- Original `0x100722d24` resolves nil context to 0 for Continue Thread and 2 for
+  ordinary comment focus; limit100. `0x100039968` uses path
+  `comments/<post>/_/<comment>.json`, context + sort + pagination. These are static
+  saved-decompile observations, not clean-stock runtime verification.
+- Added client focused route and optional controller focus/context inputs;
+  Continue Thread now pushes a separate screen. Classification uses count<=0,
+  not empty children. Invalid/non-comment parent doesn't navigate.
+- Host actual-client suite113 checks passes (focused URL/context0/sort/limit100,
+  context2, invalid ID, unchanged ordinary full-thread route/depth); models81 checks;
+  tree tests and five mock tests pass. Local fixture exposes a Continue Thread
+  beneath c002 and focused response. Build15174 succeeded.
+- Isolated mock runtime PID15892 passed: Continue beneath c002 requests GET
+  /comments/1fx0002/_/c002.json?context=0&limit=100&raw_json=1, shows parent and
+  indented continued reply; Back restores original full hierarchy identically.
+  Repeated twice. GET-only request evidence; writes explicitly blocked on mock.
+  Signed-in app untouched. Evidence under approved temp apollo-continue-ui.mTXJY8/
+  (before/focused/back/focused-repeat/back-repeat pairs, requests.jsonl).
+  Previously expanded/collapsed variants and alternate sorts unverified.
+- Parent-context row, view-full-post control, permalink routing and focused-scroll
+  behavior remain separate work.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

@@ -15,7 +15,8 @@
 }
 
 - (BOOL)isContinueThread {
-    return self.children.count == 0;
+    // Stock dispatcher 0x10071ba78 branches on count < 1, not children.
+    return self.count <= 0;
 }
 
 - (NSString *)description {
