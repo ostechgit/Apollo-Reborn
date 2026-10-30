@@ -33,6 +33,28 @@ FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
 SORTS = {'hot', 'best', 'new', 'rising', 'controversial', 'top'}
 
 
+
+_VIDEO_CACHE = {}
+
+
+def mp4(width, height, seed):
+    """A tiny silently looping MP4 so animated comment media can be tested."""
+    key = (width, height, seed)
+    if key in _VIDEO_CACHE:
+        return _VIDEO_CACHE[key]
+    import subprocess
+    import tempfile
+    out = os.path.join(tempfile.gettempdir(), f'apollo-mock-{seed}-{width}x{height}.mp4')
+    if not os.path.exists(out):
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error',
+                        '-f', 'lavfi', '-i', f'testsrc=size={width}x{height}:rate=12:duration=2',
+                        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out], check=True)
+    with open(out, 'rb') as handle:
+        data = handle.read()
+    _VIDEO_CACHE[key] = data
+    return data
+
+
 def load(name):
     with open(os.path.join(FIXTURES, name)) as handle:
         return json.load(handle)
@@ -126,6 +148,46 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(url.query)
         parts = [p for p in url.path.split('/') if p]
 
+        if parts[:1] == ['vid'] and len(parts) == 3:
+            name = parts[2]
+            if not name.endswith('.mp4'):
+                return self.send_json({'error': 404}, 404)
+            try:
+                width, height = (int(v) for v in parts[1].split('x'))
+            except ValueError:
+                return self.send_json({'error': 404}, 404)
+            data = mp4(width, height, name[:-4])
+            # AVFoundation probes media with byte ranges; answering 200 to a
+            # Range request makes CoreMedia reject the asset outright.
+            start, end = 0, len(data) - 1
+            status = 200
+            requested = self.headers.get('Range', '')
+            if requested.startswith('bytes='):
+                spec = requested[6:].split(',')[0].strip()
+                first, _, last = spec.partition('-')
+                if first and first.isdigit():
+                    start = int(first)
+                if last and last.isdigit():
+                    end = min(int(last), len(data) - 1)
+                elif first:
+                    end = len(data) - 1
+                if start > end or start >= len(data):
+                    self.send_response(416)
+                    self.send_header('Content-Range', f'bytes */{len(data)}')
+                    self.end_headers()
+                    return
+                status = 206
+            body = data[start:end + 1]
+            self.send_response(status)
+            self.send_header('Content-Type', 'video/mp4')
+            self.send_header('Accept-Ranges', 'bytes')
+            self.send_header('Content-Length', str(len(body)))
+            if status == 206:
+                self.send_header('Content-Range', f'bytes {start}-{end}/{len(data)}')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parts[:1] == ['img'] and len(parts) == 3:
             try:
                 width, height = (int(v) for v in parts[1].split('x'))
@@ -198,6 +260,12 @@ class Handler(BaseHTTPRequestHandler):
                     first['media_metadata'] = {'paper': {'status': 'valid', 'e': 'Image',
                         'm': 'image/png',
                         's': {'u': self.base() + 'img/600x400/paper.png', 'x': 600, 'y': 400}}}
+                    first['body'] = first['body'] + '\n\n![gif](giphy|looper)'
+                    first['media_metadata']['giphy|looper'] = {'status': 'valid', 'e': 'AnimatedImage',
+                        'm': 'image/gif',
+                        's': {'gif': self.base() + 'img/320x240/looper.png',
+                              'mp4': self.base() + 'vid/320x240/looper.mp4',
+                              'x': 320, 'y': 240}}
                     parent = thread[1]['data']['children'][0]['data']['replies']['data']['children'][0]
                     parent['data']['replies'] = {'kind': 'Listing', 'data': {'children': [
                         {'kind': 'more', 'data': {'count': 0, 'name': 't1_continue', 'id': 'continue',

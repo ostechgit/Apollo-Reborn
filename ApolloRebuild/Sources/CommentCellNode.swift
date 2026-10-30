@@ -11,6 +11,11 @@ struct CommentMedia {
     let url: URL
     let width: CGFloat
     let height: CGFloat
+    /// Animated media (giphy, and Reddit's own gif previews) also carries an
+    /// MP4 rendition, which is what the original plays inline. Nil for stills.
+    var videoURL: URL? = nil
+
+    var isAnimated: Bool { self.videoURL != nil }
 }
 
 enum CommentBody {
@@ -85,7 +90,8 @@ enum CommentBody {
         let width = CGFloat((source["x"] as? NSNumber)?.doubleValue ?? 0)
         let height = CGFloat((source["y"] as? NSNumber)?.doubleValue ?? 0)
         guard width > 0, height > 0 else { return nil }
-        return CommentMedia(url: url, width: width, height: height)
+        let mp4 = (source["mp4"] as? String).flatMap(URL.init(string:))
+        return CommentMedia(url: url, width: width, height: height, videoURL: mp4)
     }
 
     /// A picture with no media_metadata entry still carries its own size in the
@@ -188,7 +194,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     private let bodyNode = ASTextNode()
     /// Pictures and gifs embedded in the body, drawn below the text at the
     /// column's full width with the original's rounded corners.
-    private var mediaNodes: [ASNetworkImageNode] = []
+    private var mediaNodes: [ASDisplayNode] = []
     private var mediaURLs: [URL] = []
     private var mediaRatios: [CGFloat] = []
     private var hasBodyText = false
@@ -292,18 +298,26 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             self.bodyNode.attributedText = MarkdownText.attributedString(split.text, style: .comment)
         }
         for item in split.media {
-            let imageNode = ASNetworkImageNode()
-            imageNode.url = item.url
-            imageNode.contentMode = .scaleAspectFill
-            imageNode.cornerRadius = 10
-            imageNode.clipsToBounds = true
-            imageNode.placeholderColor = .secondarySystemBackground
-            imageNode.placeholderEnabled = true
+            let node: ASDisplayNode
+            if let videoURL = item.videoURL {
+                // Animated media plays in place; the still stays available for
+                // the full-screen viewer.
+                node = CommentVideoNode(url: videoURL)
+            } else {
+                let imageNode = ASNetworkImageNode()
+                imageNode.url = item.url
+                imageNode.contentMode = .scaleAspectFill
+                imageNode.cornerRadius = 10
+                imageNode.clipsToBounds = true
+                imageNode.placeholderColor = .secondarySystemBackground
+                imageNode.placeholderEnabled = true
+                node = imageNode
+            }
             // The original opens the viewer from a tapped body image, so the
             // node must take the touch before the row's collapse gesture.
-            imageNode.isUserInteractionEnabled = true
+            node.isUserInteractionEnabled = true
             self.mediaURLs.append(item.url)
-            self.mediaNodes.append(imageNode)
+            self.mediaNodes.append(node)
             self.mediaRatios.append(item.height / max(item.width, 1))
         }
 
@@ -476,12 +490,13 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
                 self.bodyNode.style.spacingBefore = 8
                 contentChildren.append(self.bodyNode)
             }
-            for (index, imageNode) in self.mediaNodes.enumerated() {
-                imageNode.style.spacingBefore = 8
-                // ASRatioLayoutSpec takes the column's full width and derives
-                // the height from the picture's own dimensions.
-                contentChildren.append(ASRatioLayoutSpec(ratio: self.mediaRatios[index],
-                                                         child: imageNode))
+            for (index, mediaNode) in self.mediaNodes.enumerated() {
+                // ASRatioLayoutSpec takes the column's full width and derives the
+                // height from the picture's own dimensions. The spacing belongs
+                // to the spec, not the child inside it, or the blocks touch.
+                let ratio = ASRatioLayoutSpec(ratio: self.mediaRatios[index], child: mediaNode)
+                ratio.style.spacingBefore = 8
+                contentChildren.append(ratio)
             }
         }
         let content = ASStackLayoutSpec(direction: .vertical, spacing: 0,
