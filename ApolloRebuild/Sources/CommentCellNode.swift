@@ -126,9 +126,14 @@ enum CommentBody {
 // deleted/moderator banners, the "show post context" row, and the swipe
 // gestures that vote/collapse a comment.
 
-class CommentCellNode: ASCellNode, ASTextNodeDelegate {
+class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelegate {
 
     var onLinkTapped: ((URL) -> Void)?
+    /// Tapping a picture embedded in the body opens the media viewer.
+    var onMediaTapped: ((URL) -> Void)?
+    /// A tap on the body text that is not on a link behaves like a tap on the
+    /// row: it collapses or expands the comment.
+    var onBodyTapped: (() -> Void)?
     var onAuthorTapped: ((String) -> Void)?
 
     func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
@@ -184,6 +189,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate {
     /// Pictures and gifs embedded in the body, drawn below the text at the
     /// column's full width with the original's rounded corners.
     private var mediaNodes: [ASNetworkImageNode] = []
+    private var mediaURLs: [URL] = []
     private var mediaRatios: [CGFloat] = []
     private var hasBodyText = false
     private let threadLineNode = ASDisplayNode()
@@ -293,7 +299,10 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate {
             imageNode.clipsToBounds = true
             imageNode.placeholderColor = .secondarySystemBackground
             imageNode.placeholderEnabled = true
-            imageNode.isUserInteractionEnabled = false
+            // The original opens the viewer from a tapped body image, so the
+            // node must take the touch before the row's collapse gesture.
+            imageNode.isUserInteractionEnabled = true
+            self.mediaURLs.append(item.url)
             self.mediaNodes.append(imageNode)
             self.mediaRatios.append(item.height / max(item.width, 1))
         }
@@ -335,6 +344,29 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate {
             .withTintColor(CommentCellNode.moreOptionsGrey, renderingMode: .alwaysOriginal),
                         for: .normal)
         self.applyMenu()
+        // Attach taps once the nodes have views; doing it in init would force
+        // every media view to load synchronously.
+        for (index, node) in self.mediaNodes.enumerated() {
+            let recognizer = UITapGestureRecognizer(target: self,
+                action: #selector(CommentCellNode.mediaTapped(_:)))
+            node.view.tag = index
+            node.view.addGestureRecognizer(recognizer)
+        }
+        // ASTextNode takes every touch (it needs them for link highlighting), so
+        // a tap on non-link text never reaches the table. Re-route it.
+        let bodyTap = UITapGestureRecognizer(target: self, action: #selector(CommentCellNode.bodyTapped(_:)))
+        bodyTap.cancelsTouchesInView = false
+        bodyTap.delegate = self
+        self.bodyNode.view.addGestureRecognizer(bodyTap)
+    }
+
+    @objc private func bodyTapped(_ recognizer: UITapGestureRecognizer) {
+        let point = recognizer.location(in: self.bodyNode.view)
+        var name: NSString?
+        if self.bodyNode.linkAttributeValue(at: point, attributeName: &name, range: nil) != nil {
+            return   // the text node's own link handling owns this tap
+        }
+        self.onBodyTapped?()
     }
 
     /// Attaches (or clears) the ••• menu on the button, which is what makes iOS
@@ -353,6 +385,11 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate {
 
     @objc private func moreTapped() {
         self.onMoreTapped?()
+    }
+
+    @objc private func mediaTapped(_ recognizer: UITapGestureRecognizer) {
+        guard let view = recognizer.view, view.tag >= 0, view.tag < self.mediaURLs.count else { return }
+        self.onMediaTapped?(self.mediaURLs[view.tag])
     }
 
     // MARK: - Colours

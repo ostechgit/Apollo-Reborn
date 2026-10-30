@@ -192,6 +192,12 @@ class Handler(BaseHTTPRequestHandler):
                         ]}}
                     thread[1]['data']['children'] = [parent]
                 else:
+                    # Mock-only inline picture so comment media taps can be tested.
+                    first = thread[1]['data']['children'][0]['data']
+                    first['body'] = first['body'] + '\n\n![pic](https://i.redd.it/paper.png)'
+                    first['media_metadata'] = {'paper': {'status': 'valid', 'e': 'Image',
+                        'm': 'image/png',
+                        's': {'u': self.base() + 'img/600x400/paper.png', 'x': 600, 'y': 400}}}
                     parent = thread[1]['data']['children'][0]['data']['replies']['data']['children'][0]
                     parent['data']['replies'] = {'kind': 'Listing', 'data': {'children': [
                         {'kind': 'more', 'data': {'count': 0, 'name': 't1_continue', 'id': 'continue',

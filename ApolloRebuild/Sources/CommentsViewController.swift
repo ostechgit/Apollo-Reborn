@@ -460,6 +460,16 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.tableNode.reloadRows(at: [IndexPath(row: 0, section: 0)], with: .none)
     }
 
+    /// A picture embedded in a comment opens the same viewer the post header
+    /// uses. Video/GIF playback inside comments is separate work (R3).
+    private func openMedia(_ url: URL) {
+        let viewer = MediaViewerController(mediaURL: url)
+        let navigation = UINavigationController(rootViewController: viewer)
+        viewer.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
+            primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
+        self.present(navigation, animated: true)
+    }
+
     private func openLink(_ url: URL) {
         if let route = RedditCommentRoute(url: url), let navigation = self.navigationController {
             route.push(on: navigation)
@@ -915,6 +925,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 }
                 cell.onLinkTapped = { [weak self] url in self?.openLink(url) }
                 cell.onAuthorTapped = { [weak self] username in self?.openAuthor(username) }
+                cell.onMediaTapped = { [weak self] url in self?.openMedia(url) }
+                cell.onBodyTapped = { [weak self] in self?.toggleCollapse(comment) }
                 return cell
             }
         case .more(let more, let depth):
