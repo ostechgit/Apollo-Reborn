@@ -435,6 +435,35 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
     repeated parent loading at runtime, edited/hidden ancestor contexts, and any
     real-Reddit behavior.
 
+### Comments loading, empty, error and refresh states (in progress)
+
+- Native evidence: `CommentsViewController` owns `refreshControl` (ApolloRefreshControl)
+  plus the `refreshControlActivatedWithSender:` selector, and the list adapter has
+  distinct `viewParentCommentsToken` / `spinnerToken` / `noCommentsToken` /
+  `headerImageToken` sections before comments (`0x100721cd4` lines 89–139). Exact
+  cell drawing for the spinner and no-comments rows is NOT established.
+- Implemented with the project's own convention instead: `UIRefreshControl` on
+  `tableNode.view` calling `loadComments(clearExisting: false)`, endRefreshing on
+  every completion, and a centered `FeedMessageView` for "Loading…", "No Comments"
+  and "Couldn't Load Comments" + "Try Again". The state view is never shown while
+  rows exist, so a failed refresh keeps readable content (silent by design;
+  native failure presentation unverified).
+- Mock gained `errorpost` (HTTP500) and `emptypost` (empty Listing) rows plus two
+  extra listing entries, mock-only; six mock tests pass including both states.
+- Isolated mock runtime PID32732 verified all states, no crash, no vote/save/comment
+  requests: error state shows "Couldn't Load Comments" + message + "Try Again" over
+  a still-visible post header and a retry issues exactly one new request; empty
+  state shows centered "No Comments"; pull-to-refresh fires exactly one request
+  per pull, keeps the fully rendered thread visible under the spinner, stops
+  spinning, and leaves the hierarchy settled identical. No overlap/clipping of
+  the state views. Evidence: approved temp `comments-states/evidence`.
+  - Mock artifact fixed after that run: `/comments/emptypost.json` now returns the
+    emptypost header instead of the 1fx0002 post, so the screen no longer swaps
+    to the other post's title.
+  - Unverified: real-Reddit behavior; native spinner/no-comments cell appearance;
+    and the next step is the native `spinnerToken`/`noCommentsToken` sections if
+    visual parity there matters.
+
 ## Session Notes
 
 - **2026-10-29:** Initial investigation completed. Identified 7 missing files and 31 placeholder view controllers. Moved rebuild into Apollo-Reborn repo.

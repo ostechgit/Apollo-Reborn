@@ -97,6 +97,13 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     private var moreItem: UIBarButtonItem?
     private var loadGeneration = 0
     private var threadTask: URLSessionDataTask?
+    private let refreshControl = UIRefreshControl()
+    private var stateView: FeedMessageView?
+    private var isLoadingComments = false
+
+    @objc private func refreshControlActivated() {
+        self.loadComments(clearExisting: false)
+    }
 
     deinit {
         self.threadTask?.cancel()
@@ -158,6 +165,11 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             tableView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
         ])
+
+        // Native owns an ApolloRefreshControl ivar and the
+        // refreshControlActivatedWithSender: selector; the rebuild uses UIKit's.
+        self.refreshControl.addTarget(self, action: #selector(refreshControlActivated), for: .valueChanged)
+        tableView.refreshControl = self.refreshControl
 
         self.configureNavigationBar()
         self.configureJumpButton()
@@ -400,6 +412,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.rebuildRows()
         self.configureNavigationBar()
         self.tableNode.reloadData()
+        self.updateStateView(error: nil)
     }
 
     /// Only root replies belong at depth zero. If the parent is absent from
@@ -537,15 +550,21 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.tableNode.reloadData()
         }
         self.sortItem?.menu = self.sortMenu()
+        self.isLoadingComments = true
+        self.updateStateView(error: nil)
         LogBuddy.debug("Comments: load \(self.link.identifier ?? "nil") sort=\(self.commentSort.rawValue)")
         let completion: RDKLinkAndCommentsCompletionBlock = { [weak self] link, comments, error in
             DispatchQueue.main.async {
                 guard let self = self, generation == self.loadGeneration else { return }
                 self.threadTask = nil
+                self.isLoadingComments = false
+                self.refreshControl.endRefreshing()
                 if let error = error {
                     // Keep one coherent last-good snapshot on failure. Clearing
                     // only visible rows allowed collapse to resurrect old data.
                     LogBuddy.error("CommentsViewController: thread failed (\((error as NSError).code))")
+                    self.rebuildRows()
+                    self.updateStateView(error: error)
                     return
                 }
                 if let link = link { self.link = link }
@@ -553,6 +572,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 self.rebuildRows()
                 self.configureNavigationBar()
                 self.tableNode.reloadData()
+                self.updateStateView(error: nil)
                 LogBuddy.debug("Comments: loaded \(self.rows.count) visible rows")
             }
         }
@@ -566,6 +586,36 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
                 commentSort: self.commentSort, pagination: nil, completion: completion)
         }
+    }
+
+    /// Loading / empty / error feedback. Native uses spinnerToken and
+    /// noCommentsToken adapter sections; their exact cell drawing is unverified,
+    /// so this reuses the app's own FeedMessageView convention. Never covers a
+    /// thread that still has rows, so a failed refresh keeps readable content.
+    private func updateStateView(error: Error?) {
+        self.stateView?.removeFromSuperview()
+        self.stateView = nil
+        guard self.rows.isEmpty else { return }
+        // A focused Continue Thread can legitimately be empty while the post
+        // header still loads; only advertise empty once a request has finished.
+        let model: (String?, String, String?, (() -> Void)?)
+        if let error = error {
+            model = ("Couldn't Load Comments", error.localizedDescription, "Try Again",
+                     { [weak self] in self?.loadComments(clearExisting: false) })
+        } else if self.isLoadingComments {
+            model = (nil, "Loading…", nil, nil)
+        } else {
+            model = (nil, "No Comments", nil, nil)
+        }
+        let view = FeedMessageView(title: model.0, message: model.1, buttonTitle: model.2, action: model.3)
+        self.view.addSubview(view)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            view.centerYAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.centerYAnchor),
+            view.leadingAnchor.constraint(equalTo: self.view.readableContentGuide.leadingAnchor, constant: 16),
+            view.trailingAnchor.constraint(equalTo: self.view.readableContentGuide.trailingAnchor, constant: -16)
+        ])
+        self.stateView = view
     }
 
     /// Recomputes the visible rows from the thread and the collapsed set. A
@@ -774,6 +824,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.tree = Self.mergingParents(comments as? [RDKThing] ?? [], into: self.tree)
             self.rebuildRows()
             self.tableNode.reloadData()
+            self.updateStateView(error: nil)
         }
     }
 

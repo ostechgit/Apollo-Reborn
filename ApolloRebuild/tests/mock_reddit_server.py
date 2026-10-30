@@ -158,6 +158,15 @@ class Handler(BaseHTTPRequestHandler):
         if parts and parts[-1].endswith('.json'):
             last = parts[-1][:-5]
             if parts[0] == 'comments' and len(parts) in (2, 4):
+                if len(parts) == 2 and last == 'errorpost':
+                    return self.send_json({'message': 'Mock comment failure', 'error': 500}, 500)
+                if len(parts) == 2 and last == 'emptypost':
+                    post = copy.deepcopy(load('comments-thread.json')[0])
+                    post['data']['children'][0]['data'].update({
+                        'id': 'emptypost', 'name': 't3_emptypost',
+                        'title': 'Mock empty state', 'num_comments': 0})
+                    return self.send_json([post, {
+                        'kind': 'Listing', 'data': {'children': [], 'after': None, 'before': None}}])
                 thread = load('comments-thread.json')
                 if len(parts) == 4:
                     contexts = query.get('context', [])
@@ -198,6 +207,15 @@ class Handler(BaseHTTPRequestHandler):
                 listing = load('listing-hot.json')
                 if query.get('after'):
                     listing = second_page(listing)
+                elif parts[0] != 'user':
+                    # Mock-only rows for comments-screen state verification.
+                    for identifier, title in (('errorpost', 'Mock error state'),
+                                              ('emptypost', 'Mock empty state')):
+                        post = copy.deepcopy(listing['data']['children'][0])
+                        post['data'].update({'id': identifier, 'name': 't3_' + identifier,
+                                             'title': title, 'permalink': '/r/mock/comments/' + identifier + '/x/',
+                                             'num_comments': 0})
+                        listing['data']['children'].append(post)
                 return self.send_json(localize_media(listing, self.base()))
 
         self.send_json({'message': 'Not Found', 'error': 404}, 404)

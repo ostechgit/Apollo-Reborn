@@ -75,6 +75,12 @@ class CommentSubmitTests(unittest.TestCase):
         self.assertEqual(full[1]["data"]["children"][0]["data"]["name"], "t1_c001")
         with self.assertRaises(urllib.error.HTTPError):
             get("/comments/1fx0002/_/c999.json?context=2")
+        with self.assertRaises(urllib.error.HTTPError) as failure:
+            get("/comments/errorpost.json")
+        self.assertEqual(failure.exception.code, 500)
+        empty = get("/comments/emptypost.json")
+        self.assertEqual(empty[1]["data"]["children"], [])
+        self.assertEqual(empty[0]["data"]["children"][0]["data"]["id"], "emptypost")
 
     def test_successful_writes_have_distinct_identity(self):
         first = self.submit("t3_mock", "first")["json"]["data"]["things"][0]["data"]
