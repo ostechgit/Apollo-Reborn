@@ -254,8 +254,15 @@ class Handler(BaseHTTPRequestHandler):
                         ]}}
                     thread[1]['data']['children'] = [parent]
                 else:
-                    # Mock-only inline picture so comment media taps can be tested.
+                    # Mock-only header markers: the post is pinned + locked, its
+                    # first comment pinned, its reply locked.
+                    post = thread[0]['data']['children'][0]['data']
+                    post['stickied'] = True
+                    post['locked'] = True
                     first = thread[1]['data']['children'][0]['data']
+                    first['stickied'] = True
+                    reply = first['replies']['data']['children'][0]['data']
+                    reply['locked'] = True
                     first['body'] = first['body'] + '\n\n![pic](https://i.redd.it/paper.png)'
                     first['media_metadata'] = {'paper': {'status': 'valid', 'e': 'Image',
                         'm': 'image/png',

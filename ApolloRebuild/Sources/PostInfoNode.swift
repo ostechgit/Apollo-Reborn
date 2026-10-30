@@ -47,6 +47,13 @@ class PostInfoNode: ASDisplayNode {
     private let percentageNode = ASTextNode()
     private let commentsNode = ASTextNode()
     private let ageNode = ASTextNode()
+    /// Sticky, locked and saved markers drawn after the author name. The
+    /// original's assets are `inline-sticky`, `inline-locked` and
+    /// `inline-saved`; its cakeday and awards nodes need data this model does
+    /// not carry yet, so they are not drawn.
+    private let stickyNode = ASImageNode()
+    private let lockedNode = ASImageNode()
+    private let savedNode = ASImageNode()
 
     /// Called when the subreddit or author name is tapped. The cell forwards
     /// these to its screen (the original routes them through the same
@@ -85,6 +92,19 @@ class PostInfoNode: ASDisplayNode {
         for node in [self.subredditTextNode, self.authorTextNode] {
             node.isUserInteractionEnabled = true
             node.addTarget(self, action: #selector(nameTapped(_:)), forControlEvents: .touchUpInside)
+        }
+
+        for indicator in [self.stickyNode, self.lockedNode, self.savedNode] {
+            indicator.style.preferredSize = CGSize(width: 13, height: 13)
+            indicator.contentMode = .scaleAspectFit
+            indicator.isUserInteractionEnabled = false
+        }
+        self.stickyNode.image = ApolloAssets.image(named: "inline-sticky")
+        self.lockedNode.image = ApolloAssets.image(named: "inline-locked")
+        self.savedNode.image = ApolloAssets.image(named: "inline-saved")
+        let tint = ApolloPalette.secondaryText
+        for indicator in [self.stickyNode, self.lockedNode, self.savedNode] {
+            indicator.image = indicator.image?.withTintColor(tint, renderingMode: .alwaysOriginal)
         }
 
         self.loadAvatar()
@@ -179,6 +199,14 @@ class PostInfoNode: ASDisplayNode {
             rowChildren.append(self.byTextNode)
         }
         rowChildren.append(contentsOf: [self.avatarNode, self.authorTextNode])
+        // Indicators sit directly after the author, as the original draws them.
+        let indicators: [(ASImageNode, Bool)] = [(self.stickyNode, self.link.stickied),
+                                                 (self.lockedNode, self.link.locked),
+                                                 (self.savedNode, self.link.saved)]
+        for (node, shows) in indicators where shows {
+            node.style.spacingBefore = 5
+            rowChildren.append(node)
+        }
         // The author gives up room first, then the subreddit, which is the
         // order the original truncates in ("…by aliceinswe…").
         self.authorTextNode.style.flexShrink = 2

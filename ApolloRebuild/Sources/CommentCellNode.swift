@@ -186,6 +186,10 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     /// The little grey pencil the original shows next to the score of a comment
     /// that has been edited.
     private let editedNode = ASImageNode()
+    /// A pinned (stickied) or locked comment says so next to its author, using
+    /// the same `inline-sticky` / `inline-locked` assets as the post header.
+    private let stickyNode = ASImageNode()
+    private let lockedNode = ASImageNode()
     /// A real UIButton, because the ••• menu is a native `UIMenu` and only a
     /// UIButton can show one (`showsMenuAsPrimaryAction`). Texture's
     /// ASButtonNode has no UIButton behind it, so it can't host a menu.
@@ -456,6 +460,19 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
         var headerChildren: [ASLayoutElement] = [self.avatarNode, self.authorNode]
         if self.flairNode.attributedText != nil {
             headerChildren.append(self.flairNode)
+        }
+        let markers: [(ASImageNode, String, Bool)] = [(self.stickyNode, "inline-sticky", self.comment.stickied),
+                                                      (self.lockedNode, "inline-locked", self.comment.isLocked)]
+        for (indicator, asset, shows) in markers where shows {
+            indicator.image = ApolloAssets.image(named: asset)?
+                .withTintColor(CommentCellNode.moreOptionsGrey, renderingMode: .alwaysOriginal)
+            // ASImageNode defaults to .scaleAspectFill, which distorts a 12pt
+            // glyph; the post header's markers use .scaleAspectFit.
+            indicator.contentMode = .scaleAspectFit
+            indicator.style.preferredSize = CGSize(width: 12, height: 12)
+            indicator.style.spacingBefore = 5
+            indicator.isUserInteractionEnabled = false
+            headerChildren.append(indicator)
         }
         headerChildren.append(self.pointsNode)
         if self.editedNode.image != nil {
