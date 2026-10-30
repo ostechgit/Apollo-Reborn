@@ -334,7 +334,6 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         items.append(self.action("Report", "option-report") { [weak self] in
             self?.presentReport(forLink: self?.link)
         })
-        items.append(self.action("Live Activity", "option-live-activity") {})
         items.append(self.action("Remind Me In\u{2026}", "option-remind-me-in") {})
         return items
     }
