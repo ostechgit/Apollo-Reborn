@@ -85,7 +85,10 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// the same list minus the subtrees hidden behind collapsed comments.
     private var tree: [Row] = []
     private var rows: [Row] = []
-    private var commentSort: RDKCommentSortingMethod = .default
+    /// The original reads a saved default comment sort while constructing the
+    /// controller (0x100722458 lines 125–167), so a choice made once sticks.
+    private static let commentSortKey = "commentSortingMethod"
+    private var commentSort: RDKCommentSortingMethod = CommentsViewController.savedCommentSort()
     private var expandingMore: Set<String> = []
     /// fullname of every comment the reader has collapsed by tapping it.
     private var collapsedComments: Set<String> = []
@@ -122,6 +125,12 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.context = context
         self.continuingThread = continuingThread
         super.init(nibName: nil, bundle: nil)
+    }
+
+    private static func savedCommentSort() -> RDKCommentSortingMethod {
+        let raw = UserDefaults.standard.object(forKey: CommentsViewController.commentSortKey) as? Int
+        guard let raw = raw, let method = RDKCommentSortingMethod(rawValue: raw) else { return .default }
+        return method
     }
 
     /// `.default` delegates to Reddit; do not show a misleading Top selection
@@ -261,6 +270,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                      state: self.displayedSort == method ? .on : .off) { [weak self] _ in
                 guard let self = self else { return }
                 self.commentSort = method
+                UserDefaults.standard.set(method.rawValue, forKey: CommentsViewController.commentSortKey)
                 // The button draws the chosen sort's glyph from now on.
                 self.sortItem?.image = ApolloAssets.image(named: CommentsViewController.sortGlyph(method))
                 self.collapsedComments.removeAll()
