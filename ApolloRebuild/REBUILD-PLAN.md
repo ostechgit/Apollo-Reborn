@@ -215,12 +215,25 @@ out of the original's real JSON (`APOLLO_DUMP_LISTING=1`).
 
 ### Still missing on this screen (in the original, absent here)
 
-- **Find in Comments**: pulling down at the top reveals a "Find in Comments"
-  search field under the nav bar (seen in the comparator), with match stepping.
-- **Load parent comments** (`view-parent-comments` asset, string
-  "Load parent comments") for a thread opened from a single comment's permalink.
-- **Select Text** mode, Share as Image, Give Award, Report, Remind Me In…,
-  Live Activity — the menu rows exist but their actions are stubs.
+- ~~**Find in Comments**~~ — built and verified: menu row opens a match bar that
+  insets the list; counter, Previous/Next and Done (see the Find in Comments
+  section below). Pull-down-to-reveal was a comparator observation, not
+  reproduced.
+- ~~**Load parent comments**~~ — built and verified with the native
+  `context:10` request and in-place ancestor merge, plus the native
+  `View All Comments` control for permalink-focused threads.
+- ~~**Select Text**~~ — built and verified: a read-only sheet showing
+  `u/<author>:` + body for a comment, or title/self text/URL for a post.
+  Presentation parity with the original is unverified (the row previously did
+  nothing at all).
+- **Share as Image**, **Give Award**, **Report**, **Remind Me In…**,
+  **Live Activity** — still stubs. For Report the native request shape is known
+  (`api/report` with `thing_id`, `reason`, `site_reason_selected`, optional
+  `custom_text`), but the literals actually sent for each option could not be
+  recovered: they are not in the small-string pool and do not reach the call
+  sites as statically trackable registers, and the recovered selector on the
+  moderator path is `createRedditAdminReport…`, not the user-report method.
+  Wiring Report now would mean inventing wire values, so it is deferred.
 - **Swipe to vote**, long-press preview (3D touch), and tapping a comment's
   media to open the media viewer.
 - **Header indicators**: sticky pin (`inline-sticky`), cakeday (`cakeday` +
