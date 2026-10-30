@@ -124,7 +124,7 @@ static void TestComments(NSArray *response) {
         CHECK(reply.edited != nil && reply.replies == nil, @"edited timestamp, \"\" replies -> nil");
         RDKMoreComments *more = (RDKMoreComments *)first.replies[1];
         CHECK([more isKindOfClass:[RDKMoreComments class]], @"more class %@", more.class);
-        CHECK(more.count == 14 && more.children.count == 3 && !more.isContinueThread, @"more stub %@", more);
+        CHECK(more.count == 14 && more.children.count == 14 && !more.isContinueThread, @"more stub %@", more);
         CHECK([more.parentID isEqualToString:@"t1_c001"], @"more parent = %@", more.parentID);
     }
 
