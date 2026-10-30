@@ -618,6 +618,24 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     } completion:completion];
 }
 
+// MARK: - Subreddit rules
+
+- (NSURLSessionDataTask *)rulesForSubreddit:(NSString *)subreddit completion:(void (^)(NSArray<NSDictionary *> *, NSError *))completion {
+    if (!subreddit.length) {
+        completion(nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"A subreddit is required."]);
+        return nil;
+    }
+    NSString *path = [NSString stringWithFormat:@"r/%@/about/rules.json", subreddit];
+    return [self getPath:path parameters:nil completion:^(id response, NSError *error) {
+        if (error) { completion(nil, error); return; }
+        NSArray *rules = [response isKindOfClass:NSDictionary.class] && [response[@"rules"] isKindOfClass:NSArray.class]
+            ? response[@"rules"] : nil;
+        completion([rules filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(id rule, NSDictionary *bindings) {
+            return [rule isKindOfClass:NSDictionary.class] && [rule[@"short_name"] isKindOfClass:NSString.class];
+        }]], nil);
+    }];
+}
+
 // MARK: - Voting and saving
 
 - (NSURLSessionDataTask *)accountTaskWithPath:(NSString *)path parameters:(NSDictionary *)parameters completion:(RDKCompletionBlock)completion {

@@ -1009,6 +1009,12 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         sheet.addAction(UIAlertAction(title: "Spam or Abuse", style: .default) { [weak self] _ in
             self?.presentSpamOrAbuse(target: target)
         })
+        if let subreddit = self.link.subreddit, !subreddit.isEmpty {
+            sheet.addAction(UIAlertAction(title: "r/\(subreddit) Rules", style: .default) { [weak self] _ in
+                self?.presentSubredditRules(target: target, subreddit: subreddit,
+                                            isComment: target.hasPrefix("t1_"))
+            })
+        }
         sheet.addAction(UIAlertAction(title: "Other Issues", style: .default) { [weak self] _ in
             self?.presentOtherIssues(target: target)
         })
@@ -1087,6 +1093,67 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         self.presentSheet(sheet)
+    }
+
+    /// Rules come from `r/<sub>/about/rules.json`; Reddit tags each rule with the
+    /// content kind it applies to, and stock only lists the relevant ones. The
+    /// sheet always offers a free-text "Custom Response".
+    private func presentSubredditRules(target: String, subreddit: String, isComment: Bool) {
+        RDKClient.shared().rules(forSubreddit: subreddit) { [weak self] rules, error in
+            guard let self = self else { return }
+            guard let rules = rules, error == nil else {
+                let alert = UIAlertController(title: "Couldn't Load Rules",
+                                              message: error?.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+                return
+            }
+            let wanted = isComment ? "comment" : "link"
+            let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            for rule in rules {
+                guard let name = rule["short_name"] as? String else { continue }
+                if let kind = rule["kind"] as? String, kind != "all", kind != wanted { continue }
+                sheet.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
+                    self?.sendRuleReport(target: target, ruleName: name)
+                })
+            }
+            sheet.addAction(UIAlertAction(title: "Custom Response", style: .default) { [weak self] _ in
+                self?.presentCustomRuleResponse(target: target)
+            })
+            sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            self.presentSheet(sheet)
+        }
+    }
+
+    private func sendRuleReport(target: String, ruleName: String) {
+        RDKClient.shared().reportThing(withFullname: target, ruleReason: ruleName) { [weak self] error in
+            guard let self = self else { return }
+            guard let error = error else {
+                Holla.showStatus("Reported", text: "Thanks — Reddit received your report.", fromViewController: self)
+                return
+            }
+            let alert = UIAlertController(title: "Couldn't Report", message: error.localizedDescription,
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.present(alert, animated: true)
+        }
+    }
+
+    /// Stock's "Custom Response" collects free text and sends it as the rule
+    /// reason; the exact payload for that path was not captured, so this sends
+    /// the same shape with the typed text as the rule.
+    private func presentCustomRuleResponse(target: String) {
+        let alert = UIAlertController(title: "Custom Response", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Why are you reporting this?"
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Report", style: .default) { [weak self, weak alert] _ in
+            guard let text = alert?.textFields?.first?.text,
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            self?.sendRuleReport(target: target, ruleName: text)
+        })
+        self.present(alert, animated: true)
     }
 
     private func presentInvoluntaryPornography(target: String) {
@@ -1174,68 +1241,49 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     // MARK: - Share as image
 
-    /// Stock renders the item into a card and shares the image. This draws the
-    /// same content (title, body, meta, watermark) without the preview sheet's
-    /// toggles, which are still unimplemented.
+    /// Stock renders the item into a card, shows it in a "Preview" sheet with
+    /// Hide Usernames / Hide Subreddit / Watermark / Link controls, and shares
+    /// the rendered image.
     private func presentShareImage(forLink link: RDKLink?) {
         guard let link = link else { return }
-        var lines = [link.title ?? ""]
-        if let body = link.selfText, !body.isEmpty { lines.append(body) }
-        let meta = "in r/\(link.subreddit ?? "") by u/\(link.author ?? "")"
-        self.shareRenderedCard(lines: lines.filter { !$0.isEmpty }, meta: meta)
+        let title = link.title ?? ""
+        let body = link.selfText ?? ""
+        let author = link.author ?? ""
+        let subreddit = link.subreddit ?? ""
+        let meta = { (options: ShareImageOptions) -> String in
+            var parts: [String] = []
+            if !options.hideSubreddit, !subreddit.isEmpty { parts.append("in r/\(subreddit)") }
+            if !options.hideUsernames, !author.isEmpty { parts.append("by u/\(author)") }
+            return parts.joined(separator: " ")
+        }
+        self.presentSharePreview(title: title, lines: body.isEmpty ? [] : [body],
+                                 link: optionsURL(link, link: link),
+                                 meta: meta)
     }
 
     private func presentShareImage(forComment comment: RDKComment) {
-        let meta = "u/\(comment.author ?? "") · \(comment.score) points"
-        self.shareRenderedCard(lines: [comment.body ?? ""], meta: meta)
+        let author = comment.author ?? ""
+        let meta = { (options: ShareImageOptions) -> String in
+            options.hideUsernames || author.isEmpty ? "" : "u/\(author) · \(comment.score) points"
+        }
+        self.presentSharePreview(title: "", lines: [comment.body ?? ""],
+                                 link: optionsURL(nil, link: nil), meta: meta)
     }
 
-    private func shareRenderedCard(lines: [String], meta: String) {
-        let width: CGFloat = 340
-        let inset: CGFloat = 16
-        let bodyFont = UIFont.systemFont(ofSize: 15)
-        let titleFont = UIFont.boldSystemFont(ofSize: 17)
-        var height: CGFloat = 0
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 2
-        let measured: [(String, CGRect)] = lines.enumerated().map { index, text in
-            let font = index == 0 ? titleFont : bodyFont
-            let bounds = (text as NSString).boundingRect(with: CGSize(width: width - inset * 2, height: .greatestFiniteMagnitude),
-                                                        options: [.usesLineFragmentOrigin],
-                                                        attributes: [.font: font, .paragraphStyle: paragraph], context: nil)
-            let rect = CGRect(x: inset, y: height, width: width - inset * 2, height: ceil(bounds.height))
-            height += ceil(bounds.height) + 10
-            return (text, rect)
-        }
-        height += 46   // meta + watermark rows
+    private func optionsURL(_ unused: RDKLink?, link: RDKLink?) -> String? {
+        guard let permalink = link?.permalink else { return nil }
+        return "https://www.reddit.com" + permalink
+    }
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
-        let image = renderer.image { context in
-            UIColor.systemBackground.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-            for (index, entry) in measured.enumerated() {
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: index == 0 ? titleFont : bodyFont,
-                    .foregroundColor: index == 0 ? UIColor.label : UIColor.secondaryLabel,
-                    .paragraphStyle: paragraph,
-                ]
-                (entry.0 as NSString).draw(in: entry.1, withAttributes: attributes)
-            }
-            let metaAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 12),
-                .foregroundColor: UIColor.secondaryLabel,
-            ]
-            (meta as NSString).draw(at: CGPoint(x: inset, y: height - 30), withAttributes: metaAttributes)
-            let mark = "via Apollo" as NSString
-            let size = mark.size(withAttributes: metaAttributes)
-            mark.draw(at: CGPoint(x: width - inset - size.width, y: height - 30), withAttributes: metaAttributes)
+    private func presentSharePreview(title: String, lines: [String], link: String?,
+                                     meta: @escaping (ShareImageOptions) -> String) {
+        let controller = ShareImageViewController(title: title, lines: lines, link: link, meta: meta)
+        let navigation = UINavigationController(rootViewController: controller)
+        if let sheet = navigation.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
         }
-        let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
-        if let popover = activity.popoverPresentationController {
-            popover.sourceView = self.view
-            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 1, height: 1)
-        }
-        self.present(activity, animated: true)
+        self.present(navigation, animated: true)
     }
 
     // MARK: - Find in Comments
@@ -1514,6 +1562,9 @@ class ReminderViewController: UIViewController {
 
     private let onSchedule: (Date) -> Void
     private let picker = UIDatePicker()
+    private let label = UILabel()
+    private let dateButton = UIButton(type: .system)
+    private var usesDate = false
 
     init(onSchedule: @escaping (Date) -> Void) {
         self.onSchedule = onSchedule
@@ -1529,15 +1580,18 @@ class ReminderViewController: UIViewController {
         super.viewDidLoad()
         self.view.backgroundColor = .systemBackground
 
-        let label = UILabel()
-        label.text = "Send me a reminder notification about this comment in\u{2026}"
-        label.numberOfLines = 0
-        label.font = .preferredFont(forTextStyle: .headline)
+        self.label.text = "Send me a reminder notification about this comment in\u{2026}"
+        self.label.numberOfLines = 0
+        self.label.font = .preferredFont(forTextStyle: .headline)
 
         self.picker.datePickerMode = .countDownTimer
         self.picker.countDownDuration = 2 * 60 * 60   // stock defaults to 2 hours
 
-        let stack = UIStackView(arrangedSubviews: [label, self.picker])
+        // Stock swaps the wheel for a calendar ("on…") through this button.
+        self.dateButton.setTitle("Or choose a Date\u{2026}", for: .normal)
+        self.dateButton.addAction(UIAction { [weak self] _ in self?.toggleDateMode() }, for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [self.label, self.picker, self.dateButton])
         stack.axis = .vertical
         stack.spacing = 20
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -1553,9 +1607,222 @@ class ReminderViewController: UIViewController {
         self.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
             primaryAction: UIAction { [weak self] _ in
                 guard let self = self else { return }
-                let date = Date().addingTimeInterval(self.picker.countDownDuration)
+                let date = self.usesDate ? self.picker.date
+                                         : Date().addingTimeInterval(self.picker.countDownDuration)
                 self.onSchedule(date)
                 self.dismiss(animated: true)
             })
+    }
+
+    private func toggleDateMode() {
+        self.usesDate.toggle()
+        if self.usesDate {
+            self.picker.datePickerMode = .dateAndTime
+            self.picker.minimumDate = Date().addingTimeInterval(60)
+            self.label.text = "Send me a reminder notification about this comment on\u{2026}"
+            self.dateButton.setTitle("Or choose a Duration\u{2026}", for: .normal)
+        } else {
+            self.picker.datePickerMode = .countDownTimer
+            self.label.text = "Send me a reminder notification about this comment in\u{2026}"
+            self.dateButton.setTitle("Or choose a Date\u{2026}", for: .normal)
+        }
+    }
+}
+
+
+// ShareImageOptions - what the Preview sheet lets the reader change.
+struct ShareImageOptions {
+    var hideUsernames = false
+    var hideSubreddit = false
+    var watermark = true
+    var link: String?
+}
+
+// ShareImageViewController - stock's "Preview" sheet for Share as Image.
+class ShareImageViewController: UIViewController {
+
+    private let cardTitle: String
+    private let lines: [String]
+    private let link: String?
+    private let meta: (ShareImageOptions) -> String
+    private var options = ShareImageOptions()
+
+    private let preview = UIImageView()
+    private let stack = UIStackView()
+    private let linkButton = UIButton(type: .system)
+    private var switches: [UISwitch] = []
+
+    init(title: String, lines: [String], link: String?, meta: @escaping (ShareImageOptions) -> String) {
+        self.cardTitle = title
+        self.lines = lines
+        self.link = link
+        self.meta = meta
+        super.init(nibName: nil, bundle: nil)
+        self.title = "Preview"
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.view.backgroundColor = .systemGroupedBackground
+        self.options.link = self.link
+
+        self.preview.contentMode = .scaleAspectFit
+        self.preview.backgroundColor = .secondarySystemGroupedBackground
+        self.preview.layer.cornerRadius = 10
+        self.preview.clipsToBounds = true
+        self.preview.translatesAutoresizingMaskIntoConstraints = false
+
+        self.stack.axis = .vertical
+        self.stack.spacing = 12
+        self.stack.translatesAutoresizingMaskIntoConstraints = false
+        self.stack.addArrangedSubview(self.row("Hide Usernames", action: #selector(toggleUsernames)))
+        self.stack.addArrangedSubview(self.row("Hide Subreddit", action: #selector(toggleSubreddit)))
+        self.stack.addArrangedSubview(self.row("Watermark", action: #selector(toggleWatermark), on: true))
+
+        self.linkButton.contentHorizontalAlignment = .fill
+        self.linkButton.addAction(UIAction { [weak self] _ in self?.cycleLink() }, for: .touchUpInside)
+        self.stack.addArrangedSubview(self.linkButton)
+
+        let share = UIButton(configuration: .filled())
+        share.configuration?.title = "Share"
+        share.addAction(UIAction { [weak self] _ in self?.share() }, for: .touchUpInside)
+
+        self.view.addSubview(self.preview)
+        self.view.addSubview(self.stack)
+        share.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(share)
+
+        NSLayoutConstraint.activate([
+            self.preview.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            self.preview.leadingAnchor.constraint(equalTo: self.view.leadingAnchor, constant: 20),
+            self.preview.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -20),
+            self.preview.heightAnchor.constraint(equalTo: self.view.heightAnchor, multiplier: 0.34),
+            self.stack.topAnchor.constraint(equalTo: self.preview.bottomAnchor, constant: 20),
+            self.stack.leadingAnchor.constraint(equalTo: self.preview.leadingAnchor),
+            self.stack.trailingAnchor.constraint(equalTo: self.preview.trailingAnchor),
+            share.leadingAnchor.constraint(equalTo: self.preview.leadingAnchor),
+            share.trailingAnchor.constraint(equalTo: self.preview.trailingAnchor),
+            share.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
+        ])
+
+        self.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .close,
+            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        self.render()
+    }
+
+    private func row(_ title: String, action: Selector, on: Bool = false) -> UIView {
+        let label = UILabel()
+        label.text = title
+        label.font = .preferredFont(forTextStyle: .body)
+        let toggle = UISwitch()
+        toggle.isOn = on
+        toggle.addTarget(self, action: action, for: .valueChanged)
+        self.switches.append(toggle)
+        let row = UIStackView(arrangedSubviews: [label, toggle])
+        row.axis = .horizontal
+        row.alignment = .center
+        return row
+    }
+
+    @objc private func toggleUsernames(_ sender: UISwitch) {
+        self.options.hideUsernames = sender.isOn
+        self.render()
+    }
+
+    @objc private func toggleSubreddit(_ sender: UISwitch) {
+        self.options.hideSubreddit = sender.isOn
+        self.render()
+    }
+
+    @objc private func toggleWatermark(_ sender: UISwitch) {
+        self.options.watermark = sender.isOn
+        self.render()
+    }
+
+    /// Stock shows "No Link" and offers alternatives; cycling keeps the control
+    /// honest without inventing its picker.
+    private func cycleLink() {
+        guard self.link != nil else { return }
+        self.options.link = self.options.link == nil ? self.link : nil
+        self.updateLinkTitle()
+        self.render()
+    }
+
+    private func updateLinkTitle() {
+        self.linkButton.setTitle(self.options.link == nil ? "Link: No Link" : "Link: Permalink", for: .normal)
+    }
+
+    private func render() {
+        self.updateLinkTitle()
+        self.preview.image = ShareImageRenderer.image(title: self.cardTitle, lines: self.lines,
+                                                      meta: self.meta(self.options), options: self.options)
+    }
+
+    private func share() {
+        guard let image = self.preview.image else { return }
+        let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        if let popover = activity.popoverPresentationController {
+            popover.sourceView = self.preview
+            popover.sourceRect = self.preview.bounds
+        }
+        self.present(activity, animated: true)
+    }
+}
+
+// ShareImageRenderer - the card share-as-image produces.
+enum ShareImageRenderer {
+
+    static func image(title: String, lines: [String], meta: String, options: ShareImageOptions) -> UIImage {
+        let width: CGFloat = 340
+        let inset: CGFloat = 16
+        let bodyFont = UIFont.systemFont(ofSize: 15)
+        let titleFont = UIFont.boldSystemFont(ofSize: 17)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 2
+
+        var runs: [(String, UIFont, CGRect)] = []
+        var height: CGFloat = inset
+        if !title.isEmpty {
+            let bounds = (title as NSString).boundingRect(with: CGSize(width: width - inset * 2, height: .greatestFiniteMagnitude),
+                                                        options: [.usesLineFragmentOrigin],
+                                                        attributes: [.font: titleFont, .paragraphStyle: paragraph], context: nil)
+            runs.append((title, titleFont, CGRect(x: inset, y: height, width: width - inset * 2, height: ceil(bounds.height))))
+            height += ceil(bounds.height) + 10
+        }
+        for line in lines {
+            let bounds = (line as NSString).boundingRect(with: CGSize(width: width - inset * 2, height: .greatestFiniteMagnitude),
+                                                       options: [.usesLineFragmentOrigin],
+                                                       attributes: [.font: bodyFont, .paragraphStyle: paragraph], context: nil)
+            runs.append((line, bodyFont, CGRect(x: inset, y: height, width: width - inset * 2, height: ceil(bounds.height))))
+            height += ceil(bounds.height) + 12
+        }
+        height += 44
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
+        return renderer.image { context in
+            UIColor.systemBackground.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            for (text, font, rect) in runs {
+                (text as NSString).draw(in: rect, withAttributes: [
+                    .font: font,
+                    .foregroundColor: font === titleFont ? UIColor.label : UIColor.secondaryLabel,
+                    .paragraphStyle: paragraph,
+                ])
+            }
+            let metaAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 12),
+                .foregroundColor: UIColor.secondaryLabel,
+            ]
+            (meta as NSString).draw(at: CGPoint(x: inset, y: height - 30), withAttributes: metaAttributes)
+            if options.watermark {
+                let mark = "via Apollo" as NSString
+                let size = mark.size(withAttributes: metaAttributes)
+                mark.draw(at: CGPoint(x: width - inset - size.width, y: height - 30), withAttributes: metaAttributes)
+            }
+        }
     }
 }

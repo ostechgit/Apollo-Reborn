@@ -111,6 +111,9 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 // Native submit funnel: text + t1_/t3_ fullname -> POST api/comment.
 - (nullable NSURLSessionDataTask *)submitComment:(NSString *)text onThingWithFullName:(NSString *)fullName completion:(void (^)(RDKComment *_Nullable comment, NSError *_Nullable error))completion NS_SWIFT_NAME(submitComment(_:onThingWithFullName:completion:));
 
+// Subreddit rules for the report sheet (captured path: r/%@/about/rules.json).
+- (nullable NSURLSessionDataTask *)rulesForSubreddit:(NSString *)subreddit completion:(void (^)(NSArray<NSDictionary *> *_Nullable rules, NSError *_Nullable error))completion NS_SWIFT_NAME(rules(forSubreddit:completion:));
+
 // MARK: Reporting (account required)
 // Wire formats captured from Apollo 1.15.11 by intercepting api/report:
 //   admin reason: thing_id, reason="site_reason_selected", site_reason="<sentence>"

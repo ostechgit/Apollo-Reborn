@@ -141,7 +141,8 @@ static BOOL ApolloDiagClassIsTweakOwned(Class cls) {
                             completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))handler {
     if (ApolloDiagProbeEnabled()) {
         NSString *path = request.URL.path ?: @"";
-        if ([path containsString:@"report"]) {
+        if ([path containsString:@"report"] || [path containsString:@"rule"] ||
+            [path containsString:@"award"] || [path containsString:@"remind"]) {
             NSString *body = [[NSString alloc] initWithData:request.HTTPBody encoding:NSUTF8StringEncoding];
             ApolloLog(@"[diag G6] %@ %@ body=%@", request.HTTPMethod, path, body);
         }
