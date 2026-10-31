@@ -699,6 +699,13 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// toggled comment. A `reloadData()` here flashes the whole screen, which the
     /// original never does.
     private func reloadVisibleRows(reloading names: Set<String> = []) {
+        self.commitTreeChange(reloading: names)
+    }
+
+    /// Applies whatever the tree now says, as a batch update: stock never reloads
+    /// the whole list for a tree change (its ListAdapter implements
+    /// `performBatchAnimated:updates:completion:`).
+    private func commitTreeChange(reloading names: Set<String> = []) {
         DispatchQueue.main.async {
             let previous = self.rows
             self.rebuildRows()
@@ -828,8 +835,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 }
                 let newRows = Self.rowsFromMoreChildren(collection as? [RDKThing] ?? [], in: self.tree)
                 self.tree.replaceSubrange(index...index, with: newRows)
-                self.rebuildRows()
-                self.tableNode.reloadData()
+                self.commitTreeChange()
             }
         }
     }
@@ -893,8 +899,10 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.loadingParents = false
             guard generation == self.loadGeneration, error == nil else { return }
             self.tree = Self.mergingParents(comments as? [RDKThing] ?? [], into: self.tree)
-            self.rebuildRows()
-            self.tableNode.reloadData()
+            self.commitTreeChange(reloading: Set(self.tree.compactMap {
+                if case .comment(let comment, _) = $0 { return comment.fullName }
+                return nil
+            }))
             self.updateStateView(error: nil)
         }
     }
