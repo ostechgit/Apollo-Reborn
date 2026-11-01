@@ -404,11 +404,12 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     private func replyToPost() {
         guard AccountManager.shared.isLogged, let target = self.link.fullName else { return }
-        self.presentReply(to: target)
+        let context = "Replying to \(self.link.author.map { "u/\($0)" } ?? "the post"): \(self.link.title ?? "")"
+        self.presentReply(to: target, context: context)
     }
 
-    private func presentReply(to target: String) {
-        let composer = ComposeViewController(replyTo: target) { [weak self] comment in
+    private func presentReply(to target: String, context: String? = nil) {
+        let composer = ComposeViewController(replyTo: target, context: context) { [weak self] comment in
             guard let self = self else { return }
             self.insertSubmittedComment(comment)
         }
@@ -1541,7 +1542,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     private func replyToComment(_ comment: RDKComment) {
         guard AccountManager.shared.isLogged, let target = comment.fullName else { return }
-        self.presentReply(to: target)
+        let snippet = String((comment.body ?? "").prefix(120))
+        let context = "Replying to u/\(comment.author ?? "comment"): \(snippet)"
+        self.presentReply(to: target, context: context)
     }
 
     private func share(_ comment: RDKComment) {
