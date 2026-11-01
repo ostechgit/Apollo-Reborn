@@ -117,6 +117,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     private let jumpButton = UIButton(type: .custom)
     private var jumpTarget = 0
     private let focusedCommentID: String?
+    /// A permalink entry scrolls to its comment once, not on every reload.
+    private var hasScrolledToFocusedComment = false
     private let context: Int?
     private let continuingThread: Bool
 
@@ -602,6 +604,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 self.configureNavigationBar()
                 self.tableNode.reloadData()
                 self.updateStateView(error: nil)
+                self.scrollToFocusedCommentIfNeeded()
                 LogBuddy.debug("Comments: loaded \(self.rows.count) visible rows")
             }
         }
@@ -614,6 +617,23 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         } else {
             self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
                 commentSort: self.commentSort, pagination: nil, completion: completion)
+        }
+    }
+
+    /// A thread opened from a comment permalink starts at that comment, which is
+    /// what the original's focused load does; without this the reader lands on
+    /// the post header and has to hunt for it.
+    private func scrollToFocusedCommentIfNeeded() {
+        guard !self.hasScrolledToFocusedComment, let identifier = self.focusedCommentID else { return }
+        let fullName = identifier.hasPrefix("t1_") ? identifier : "t1_" + identifier
+        guard let row = self.rows.firstIndex(where: { row in
+            if case .comment(let comment, _) = row { return comment.fullName == fullName }
+            return false
+        }) else { return }
+        self.hasScrolledToFocusedComment = true
+        // Let the table commit the reload before scrolling to a row index.
+        DispatchQueue.main.async {
+            self.tableNode.scrollToRow(at: IndexPath(row: row, section: 1), at: .middle, animated: false)
         }
     }
 
