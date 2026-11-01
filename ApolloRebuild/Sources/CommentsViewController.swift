@@ -406,7 +406,11 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     private func replyToPost() {
         guard AccountManager.shared.isLogged, let target = self.link.fullName else { return }
-        let context = "Replying to \(self.link.author.map { "u/\($0)" } ?? "the post"): \(self.link.title ?? "")"
+        // Prefer the post title; a detail link occasionally arrives without one,
+        // in which case naming the subreddit is more useful than an empty tail.
+        let subject = (self.link.title?.isEmpty == false ? self.link.title : self.link.subreddit) ?? ""
+        let who = self.link.author.map { "u/\($0)" } ?? "the post"
+        let context = "Replying to \(who): \(String(subject.prefix(90)))"
         self.presentReply(to: target, context: context)
     }
 
