@@ -119,6 +119,10 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     private let focusedCommentID: String?
     /// A permalink entry scrolls to its comment once, not on every reload.
     private var hasScrolledToFocusedComment = false
+    /// Whether the signed-in account moderates this post's subreddit. Stock only
+    /// shows its Moderator row when this is true.
+    private var isModerator = false
+    private var moderationChecked = false
     private let context: Int?
     private let continuingThread: Bool
 
@@ -183,6 +187,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.refreshControl.addTarget(self, action: #selector(refreshControlActivated), for: .valueChanged)
         tableView.refreshControl = self.refreshControl
 
+        self.loadModerationStatus()
         self.configureFindBar()
         self.configureNavigationBar()
         self.configureJumpButton()
@@ -1031,6 +1036,11 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Rows the original's Comment sheet shows, in its order.
     private func commentActions(for comment: RDKComment) -> [ApolloActionSheetItem] {
         var items: [ApolloActionSheetItem] = []
+        if self.isModerator {
+            items.append(self.action("Moderator", "option-moderator", accessory: .disclosure) { [weak self] in
+                self?.presentModeration(for: comment)
+            })
+        }
         items.append(self.action("Upvote", "option-upvote") { [weak self] in self?.vote(comment, .up) })
         items.append(self.action("Downvote", "option-downvote") { [weak self] in self?.vote(comment, .down) })
         items.append(self.action(comment.saved ? "Unsave" : "Save",
@@ -1059,6 +1069,62 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         return items
     }
 
+
+    // MARK: - Moderation
+
+    private func loadModerationStatus() {
+        guard !self.moderationChecked, AccountManager.shared.isLogged,
+              let subreddit = self.link.subreddit else { return }
+        self.moderationChecked = true
+        RDKClient.shared().currentUser { [weak self] user, _ in
+            guard let self = self else { return }
+            let moderated = (user as? RDKUser)?.moderatedSubreddits ?? []
+            let names = moderated.compactMap { entry -> String? in
+                if let subreddit = entry as? RDKSubreddit { return subreddit.display_name ?? subreddit.name }
+                if let user = entry as? RDKUser { return user.username }
+                return entry as? String
+            }
+            self.isModerator = names.contains { $0.caseInsensitiveCompare(subreddit) == .orderedSame }
+        }
+    }
+
+    private func presentModeration(for comment: RDKComment) {
+        let sheet = UIAlertController(title: "Moderator", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Approve", style: .default) { [weak self] _ in
+            RDKClient.shared().approve(comment) { [weak self] error in
+                self?.reportModeration(error, success: "Approved")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
+            RDKClient.shared().remove(comment, spam: false) { [weak self] error in
+                self?.reportModeration(error, success: "Removed")
+            }
+        })
+        let lockTitle = comment.isLocked ? "Unlock" : "Lock"
+        sheet.addAction(UIAlertAction(title: lockTitle, style: .default) { [weak self] _ in
+            RDKClient.shared().lock(comment) { [weak self] error in
+                self?.reportModeration(error, success: lockTitle + "ed")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "Distinguish", style: .default) { [weak self] _ in
+            RDKClient.shared().distinguishComment(comment, status: 1, sticky: false) { [weak self] error in
+                self?.reportModeration(error, success: "Distinguished")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
+    }
+
+    private func reportModeration(_ error: Error?, success: String) {
+        if let error = error {
+            let alert = UIAlertController(title: "Couldn't Moderate", message: error.localizedDescription,
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.present(alert, animated: true)
+        } else {
+            Holla.showStatus(success, text: nil, fromViewController: self)
+        }
+    }
 
     // MARK: - Report
 
