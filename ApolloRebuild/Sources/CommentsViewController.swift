@@ -106,6 +106,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     private var threadTask: URLSessionDataTask?
     private let refreshControl = UIRefreshControl()
     private var stateView: FeedMessageView?
+    private var spinnerView: UIActivityIndicatorView?
     private var isLoadingComments = false
 
     @objc private func refreshControlActivated() {
@@ -886,17 +887,32 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     private func updateStateView(error: Error?) {
         self.stateView?.removeFromSuperview()
         self.stateView = nil
+        self.spinnerView?.removeFromSuperview()
+        self.spinnerView = nil
         guard self.rows.isEmpty else { return }
         // A focused Continue Thread can legitimately be empty while the post
         // header still loads; only advertise empty once a request has finished.
+        if error == nil, self.isLoadingComments {
+            // Stock shows SpinnerCellNode while the first page loads.
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            self.view.addSubview(spinner)
+            spinner.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                spinner.centerXAnchor.constraint(equalTo: self.view.centerXAnchor),
+                spinner.centerYAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.centerYAnchor)
+            ])
+            self.spinnerView = spinner
+            return
+        }
+
         let model: (String?, String, String?, (() -> Void)?)
         if let error = error {
             model = ("Couldn't Load Comments", error.localizedDescription, "Try Again",
                      { [weak self] in self?.loadComments(clearExisting: false) })
-        } else if self.isLoadingComments {
-            model = (nil, "Loading…", nil, nil)
         } else {
-            model = (nil, "No Comments", nil, nil)
+            // NoCommentsCellNode's copy, taken from the running app.
+            model = (nil, "It’s quiet… too quiet…", nil, nil)
         }
         let view = FeedMessageView(title: model.0, message: model.1, buttonTitle: model.2, action: model.3)
         self.view.addSubview(view)
