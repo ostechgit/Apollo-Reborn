@@ -125,10 +125,16 @@ class RichMediaNode: ASControlNode {
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
             var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
             if self.link.isGallery, self.link.galleryItemCount > 1 {
+                // Anchor the badge to the bottom-right; an infinite inset is not
+                // a valid layout and wedges measuring.
                 media = ASOverlayLayoutSpec(child: media,
-                                            overlay: ASInsetLayoutSpec(insets: UIEdgeInsets(top: .infinity, left: .infinity,
+                                            overlay: ASInsetLayoutSpec(insets: UIEdgeInsets(top: 0, left: 0,
                                                                                             bottom: 10, right: 10),
-                                                                       child: self.galleryCountNode))
+                                                                       child: ASRelativeLayoutSpec(
+                                                                        horizontalPosition: .end,
+                                                                        verticalPosition: .end,
+                                                                        sizingOption: .minimumSize,
+                                                                        child: self.galleryCountNode)))
             }
             if self.isVeiled {
                 // Blur the picture, then centre the badge over it.
