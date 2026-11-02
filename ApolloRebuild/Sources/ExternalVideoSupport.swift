@@ -1,3 +1,4 @@
+import SafariServices
 import UIKit
 import WebKit
 
@@ -53,12 +54,28 @@ enum ExternalVideoSource: Equatable {
     var embedURL: URL? {
         switch self {
         case .youtube(let id):
-            return URL(string: "https://www.youtube.com/embed/\(id)?playsinline=1&rel=0")
+            // `origin` and a desktop-ish UA keep YouTube from refusing the embed
+            // with its "Watch on YouTube" error inside a bare web view.
+            return URL(string: "https://www.youtube.com/embed/\(id)?playsinline=1&rel=0&modestbranding=1&origin=https://www.reddit.com")
         case .streamable(let id):
             return URL(string: "https://streamable.com/e/\(id)")
         case .redgifs(let id):
             return URL(string: "https://www.redgifs.com/ifr/\(id)")
         }
+    }
+
+    /// The canonical watch URL, used when the embed refuses to play.
+    var externalURL: URL? {
+        switch self {
+        case .youtube(let id): return URL(string: "https://www.youtube.com/watch?v=\(id)")
+        case .streamable(let id): return URL(string: "https://streamable.com/\(id)")
+        case .redgifs(let id): return URL(string: "https://www.redgifs.com/watch/\(id)")
+        }
+    }
+
+    var isYouTube: Bool {
+        if case .youtube = self { return true }
+        return false
     }
 
     var displayName: String {
@@ -71,10 +88,11 @@ enum ExternalVideoSource: Equatable {
 }
 
 // ExternalVideoViewController - a sheet that plays an embed full width.
-final class ExternalVideoViewController: UIViewController {
+final class ExternalVideoViewController: UIViewController, WKNavigationDelegate {
 
     private let source: ExternalVideoSource
     private let webView = WKWebView()
+    private var hasFallenBack = false
 
     init(source: ExternalVideoSource) {
         self.source = source
@@ -92,6 +110,8 @@ final class ExternalVideoViewController: UIViewController {
 
         self.webView.backgroundColor = .black
         self.webView.isOpaque = false
+        self.webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        self.webView.navigationDelegate = self
         // Inline playback lives on the web view's configuration.
         let configuration = self.webView.configuration
         configuration.allowsInlineMediaPlayback = true
@@ -106,9 +126,38 @@ final class ExternalVideoViewController: UIViewController {
             self.webView.heightAnchor.constraint(equalTo: self.webView.widthAnchor, multiplier: 9.0 / 16.0)
         ])
 
+        // A refused embed must not leave a dead black sheet.
+        self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Open in Safari",
+            primaryAction: UIAction { [weak self] _ in self?.openExternally() })
+
         if let url = self.source.embedURL {
             self.webView.load(URLRequest(url: url))
         }
+    }
+
+    private func openExternally() {
+        guard let url = self.source.embedURL ?? self.source.externalURL, let scheme = url.scheme else { return }
+        var target = url
+        if self.source.isYouTube, let watch = self.source.externalURL { target = watch }
+        guard ["http", "https"].contains(scheme.lowercased()) else { return }
+        let safari = SFSafariViewController(url: target)
+        self.present(safari, animated: true)
+    }
+
+    // MARK: - WKNavigationDelegate
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        self.fallbackToSafari()
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        self.fallbackToSafari()
+    }
+
+    private func fallbackToSafari() {
+        guard !self.hasFallenBack, let url = self.source.externalURL else { return }
+        self.hasFallenBack = true
+        self.present(SFSafariViewController(url: url), animated: true)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
