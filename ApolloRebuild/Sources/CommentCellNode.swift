@@ -310,7 +310,10 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             node.isUserInteractionEnabled = true
             self.mediaURLs.append(item.url)
             self.mediaNodes.append(node)
-            self.mediaRatios.append(item.height / max(item.width, 1))
+            // A zero or absurd ratio would give ASRatioLayoutSpec a degenerate
+            // size; keep it in a range the table can lay out.
+            let ratio = item.height / max(item.width, 1)
+            self.mediaRatios.append(min(max(ratio, 0.05), 3))
         }
 
         if self.depth > 0 {

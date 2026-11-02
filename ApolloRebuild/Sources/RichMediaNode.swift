@@ -36,9 +36,11 @@ class RichMediaNode: ASControlNode {
     /// reader taps. The badge assets are the original's `obscured-nsfw` /
     /// `obscured-spoiler`; they are small glyphs, NOT a full-frame overlay, so
     /// the blur is what actually hides the picture.
-    private let blurNode = ASDisplayNode(viewBlock: {
-        UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterialDark))
-    })
+    /// A plain node, not a `UIVisualEffectView` inside a `viewBlock`: Texture
+    /// lays subnodes out on a background thread, and UIKit views created that way
+    /// assert and can wedge the table (the same trap as the old comment menu
+    /// button). A dark scrim hides the picture just as effectively.
+    private let blurNode = ASDisplayNode()
     private let veilNode = ASImageNode()
     /// "1/4" badge for a gallery, which the original draws over the image.
     private let galleryCountNode = ASTextNode()
@@ -73,6 +75,7 @@ class RichMediaNode: ASControlNode {
         self.imageNode.placeholderEnabled = true
         // The node itself is the tap target, so no child may swallow the touch.
         self.imageNode.isUserInteractionEnabled = false
+        self.blurNode.backgroundColor = UIColor(white: 0, alpha: 0.82)
         self.blurNode.isUserInteractionEnabled = false
         if link.isGallery, link.galleryItemCount > 1 {
             self.galleryCountNode.attributedText = NSAttributedString(string: "1/\(link.galleryItemCount)", attributes: [
