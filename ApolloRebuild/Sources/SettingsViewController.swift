@@ -28,6 +28,14 @@ class SettingsViewController: FormViewController {
 
         let browsing = Section()
         browsing.append(
+            ButtonRow("appearance") { row in
+                row.title = "Appearance"
+                row.onCellSelection { [weak self] _, _ in
+                    self?.push(SettingsAppearanceViewController())
+                }
+            }
+        )
+        browsing.append(
             ButtonRow("general") { row in
                 row.title = "General"
                 row.onCellSelection { [weak self] _, _ in
@@ -71,7 +79,7 @@ class SettingsViewController: FormViewController {
 //
 //   Account / Add Account        settings-account-          missing
 //   Apollo Ultra                 settings-apollo-ultra      missing
-//   Appearance                   settings-appearance        missing
+//   Appearance                   settings-appearance        built
 //   General                      settings-general-          built
 //   Gestures                     settings-gestures-         built
 //   Filters & Blocks             settings-blocks-           placeholder screen
