@@ -91,6 +91,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         tableView.refreshControl = self.refreshControl
 
         self.configureNavigationBar()
+        self.loadSubredditBanner()
 
         // A different account (or none) means a different front page and vote state
         NotificationCenter.default.addObserver(self, selector: #selector(accountDidChange), name: AccountManager.accountDidChangeNotification, object: nil)
@@ -291,6 +292,24 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
     /// Reddit's `visited` flag is what "read" means in the feed.
     private(set) var hidesReadPosts = false
+
+    /// Stock shows the subreddit's header banner in that subreddit's feed
+    /// (UltraHeaderBannerTableViewCell), scrolling away with the posts.
+    private func loadSubredditBanner() {
+        guard case .subreddit(let name) = self.currentPostsType else { return }
+        RDKClient.shared().subredditBanner(forName: name) { [weak self] urlString, _ in
+            guard let self = self, let urlString = urlString, let url = URL(string: urlString) else { return }
+            let banner = ASNetworkImageNode()
+            banner.url = url
+            banner.contentMode = .scaleAspectFill
+            banner.clipsToBounds = true
+            banner.isUserInteractionEnabled = false
+            let host = UIView(frame: CGRect(x: 0, y: 0, width: self.view.bounds.width, height: 110))
+            host.addSubnode(banner)
+            banner.frame = host.bounds
+            self.tableNode.view.tableHeaderView = host
+        }
+    }
 
     private func applyReadFilter() {
         self.tableNode.reloadData()
