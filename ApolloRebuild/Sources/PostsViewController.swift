@@ -540,6 +540,10 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
     }
 
     func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
+        if ImgurAlbumResolver.albumID(from: link.url.flatMap(URL.init(string:))) != nil {
+            ImgurAlbumResolver.present(from: self, url: link.url.flatMap(URL.init(string:)))
+            return
+        }
         if let source = ExternalVideoSource(url: link.url.flatMap(URL.init(string:))) {
             ExternalMediaResolver.present(from: self, source: source)
             return

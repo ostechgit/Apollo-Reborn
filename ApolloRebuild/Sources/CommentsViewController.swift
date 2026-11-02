@@ -29,6 +29,10 @@ extension CommentsViewController: PostCellActionDelegate {
 
     func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
         let mediaLink = link.crosspostParent ?? link
+        if ImgurAlbumResolver.albumID(from: mediaLink.url.flatMap(URL.init(string:))) != nil {
+            ImgurAlbumResolver.present(from: self, url: mediaLink.url.flatMap(URL.init(string:)))
+            return
+        }
         if self.presentExternalVideoIfPossible(mediaLink) { return }
         let viewer: UIViewController
         if mediaLink.isGallery, let images = mediaLink.galleryImages {
