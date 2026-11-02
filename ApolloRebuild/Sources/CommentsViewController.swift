@@ -115,7 +115,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     /// Apollo's floating "jump to the next comment" button, bottom right.
     private let jumpButton = UIButton(type: .custom)
-    private var jumpTarget = 0
+    private var jumpTarget: Int?
     private let focusedCommentID: String?
     /// A permalink entry scrolls to its comment once, not on every reload.
     private var hasScrolledToFocusedComment = false
@@ -630,11 +630,29 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             return nil
         }
         guard !topLevel.isEmpty else { return }
-        let visible = self.tableNode.view.indexPathsForVisibleRows?.compactMap { $0.section == 1 ? $0.row : nil }.sorted() ?? []
-        let currentTop = visible.first ?? 0
-        let next = topLevel.first(where: { $0 > currentTop + 1 }) ?? topLevel.first!
+
+        // A tap during the previous animated scroll used to recompute from the
+        // still-stale visible rows and resolve to the same target, so the button
+        // felt unresponsive. Advance from the last target instead, and only fall
+        // back to the visible rows when there is no pending target (a manual
+        // scroll invalidates it).
+        let base: Int
+        if let pending = self.jumpTarget, topLevel.contains(pending) {
+            base = pending
+        } else {
+            let visible = self.tableNode.view.indexPathsForVisibleRows?
+                .compactMap { $0.section == 1 ? $0.row : nil }.sorted() ?? []
+            base = visible.first ?? topLevel[0]
+        }
+
+        let next = topLevel.first(where: { $0 > base }) ?? topLevel[0]
         self.jumpTarget = next
         self.tableNode.scrollToRow(at: IndexPath(row: next, section: 1), at: .top, animated: true)
+    }
+
+    /// A manual drag means the next jump should start from what is on screen.
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        self.jumpTarget = nil
     }
 
     // MARK: - Loading
@@ -1055,6 +1073,21 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 depths[name] = depth
             }
         }
+        // A "more" stub always belongs after the comments it sits among: it is
+        // the tail of a thread, and leaving it in API order can park it above the
+        // replies that were just loaded.
+        func tailOrder(_ things: [RDKThing]) -> [RDKThing] {
+            let comments = things.filter { !($0 is RDKMoreComments) }
+            let stubs = things.filter { $0 is RDKMoreComments }
+            return comments + stubs
+        }
+        // A stub with no child ids has nothing to load; it is an artefact of the
+        // response and would otherwise hang around until tapped again.
+        let things = things.filter { thing in
+            guard let more = thing as? RDKMoreComments else { return true }
+            return !(more.children ?? []).isEmpty
+        }
+
         var result: [Row] = []
         var visited: Set<ObjectIdentifier> = []
         func append(_ thing: RDKThing) {
@@ -1064,7 +1097,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 result.append(.comment(comment, depth: depth))
                 if let name = comment.fullName {
                     depths[name] = depth
-                    for child in children[name] ?? [] { append(child) }
+                    for child in tailOrder(children[name] ?? []) { append(child) }
                 }
             } else if let more = thing as? RDKMoreComments {
                 let depth = more.parentID.flatMap { depths[$0] } ?? max(0, more.depth - 1)
