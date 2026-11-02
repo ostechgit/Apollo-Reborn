@@ -169,13 +169,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     /// style of action menu from a comment's dots).
     /// Called when the reader taps the cell's ••• . The screen presents the
     /// native action sheet (Apollo's `ActionController`), not a UIMenu.
-    var onMoreTapped: (() -> Void)? {
-        didSet { self.applyMenu() }
-    }
-
-    var menu: UIMenu? {
-        didSet { self.applyMenu() }
-    }
+    var onMoreTapped: (() -> Void)?
 
     /// Collapsed by a tap: the body and the whole reply subtree are hidden, and
     /// the header row swaps the ⋯ and the age for a grey count badge and a
@@ -198,7 +192,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     /// A real UIButton, because the ••• menu is a native `UIMenu` and only a
     /// UIButton can show one (`showsMenuAsPrimaryAction`). Texture's
     /// ASButtonNode has no UIButton behind it, so it can't host a menu.
-    private let moreOptionsNode = ASDisplayNode(viewBlock: { UIButton(type: .custom) })
+    private let moreOptionsNode = ASButtonNode()
     private let ageNode = ASTextNode()
     private let bodyNode = ASTextNode()
     /// Pictures and gifs embedded in the body, drawn below the text at the
@@ -344,18 +338,16 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             self.collapseChevronNode.style.preferredSize = CGSize(width: 12, height: 7)
             self.collapseChevronNode.isUserInteractionEnabled = false
         }
-        self.applyMenu()
     }
 
-    /// The node's button only exists once Texture loads the node, so both the
-    /// glyph and the menu are configured there rather than in `init`.
+    /// The ••• glyph and its target are attached once Texture loads the node.
     override func didLoad() {
         super.didLoad()
-        guard let button = self.moreOptionsNode.view as? UIButton else { return }
-        button.setImage(ApolloAssets.image(named: "inline-more-options")?
+        self.moreOptionsNode.setImage(ApolloAssets.image(named: "inline-more-options")?
             .withTintColor(CommentCellNode.moreOptionsGrey, renderingMode: .alwaysOriginal),
-                        for: .normal)
-        self.applyMenu()
+                                      for: .normal)
+        self.moreOptionsNode.addTarget(self, action: #selector(CommentCellNode.moreTapped),
+                                       forControlEvents: .touchUpInside)
         // Attach taps once the nodes have views; doing it in init would force
         // every media view to load synchronously.
         for (index, node) in self.mediaNodes.enumerated() {
@@ -411,20 +403,6 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             return   // the text node's own link handling owns this tap
         }
         self.onBodyTapped?()
-    }
-
-    /// Attaches (or clears) the ••• menu on the button, which is what makes iOS
-    /// render it as a native action menu.
-    private func applyMenu() {
-        guard let button = self.moreOptionsNode.view as? UIButton else { return }
-        button.menu = self.menu
-        button.showsMenuAsPrimaryAction = self.menu != nil
-        // The sheet path replaces the popover entirely.
-        if self.onMoreTapped != nil {
-            button.menu = nil
-            button.showsMenuAsPrimaryAction = false
-            button.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
-        }
     }
 
     @objc private func moreTapped() {
