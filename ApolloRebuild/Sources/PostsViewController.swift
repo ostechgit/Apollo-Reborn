@@ -262,7 +262,31 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             controller.popoverPresentationController?.barButtonItem = self.navigationItem.rightBarButtonItems?.first
             self.present(controller, animated: true)
         }
-        return UIMenu(title: "", children: [hideRead, share])
+        // The original switches the feed between the large card and the compact
+        // row from this menu (titles recovered in ApolloNativeActionMetadata).
+        let compact = UIAction(title: "Compact Posts",
+                               image: ApolloAssets.image(named: "option-compact-thumbnails-right"),
+                               state: self.usesCompactLayout ? .on : .off) { [weak self] _ in
+            guard let self = self, !self.usesCompactLayout else { return }
+            self.usesCompactLayout = true
+            self.tableNode.reloadData()
+            self.configureNavigationBar()
+        }
+        let large = UIAction(title: "Large Thumbnails",
+                             image: ApolloAssets.image(named: "option-large-thumbnails"),
+                             state: self.usesCompactLayout ? .off : .on) { [weak self] _ in
+            guard let self = self, self.usesCompactLayout else { return }
+            self.usesCompactLayout = false
+            self.tableNode.reloadData()
+            self.configureNavigationBar()
+        }
+        return UIMenu(title: "", children: [compact, large, hideRead, share])
+    }
+
+    /// Compact rows instead of large cards, as the original's feed menu offers.
+    private(set) lazy var usesCompactLayout: Bool =
+        UserDefaults.standard.bool(forKey: "feedCompactLayout") {
+        didSet { UserDefaults.standard.set(self.usesCompactLayout, forKey: "feedCompactLayout") }
     }
 
     /// Reddit's `visited` flag is what "read" means in the feed.
@@ -411,7 +435,14 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         let link = self.visibleLinks[indexPath.row]
         let inSpecificSubreddit = self.isSpecificSubreddit
+        let compact = self.usesCompactLayout
         return { [weak self] in
+            guard let self = self else { return ASCellNode() }
+            if compact {
+                let node = CompactPostCellNode(link: link, inSpecificSubreddit: inSpecificSubreddit)
+                node.actionDelegate = self
+                return node
+            }
             let node = LargePostCellNode(link: link, inSpecificSubreddit: inSpecificSubreddit)
             node.actionDelegate = self
             return node
