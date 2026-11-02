@@ -29,6 +29,7 @@ extension CommentsViewController: PostCellActionDelegate {
 
     func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
         let mediaLink = link.crosspostParent ?? link
+        if self.presentExternalVideoIfPossible(mediaLink) { return }
         let viewer: UIViewController
         if mediaLink.isGallery, let images = mediaLink.galleryImages {
             let urls = images.compactMap { URL(string: $0.url) }
@@ -544,6 +545,17 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     /// A picture embedded in a comment opens the same viewer the post header
     /// uses. Video/GIF playback inside comments is separate work (R3).
+    /// YouTube / Streamable play in-app; everything else keeps the viewer path.
+    private func presentExternalVideoIfPossible(_ link: RDKLink) -> Bool {
+        guard let source = ExternalVideoSource(url: link.url.flatMap(URL.init(string:))) else { return false }
+        let player = ExternalVideoViewController(source: source)
+        let navigation = UINavigationController(rootViewController: player)
+        player.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
+            primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
+        self.present(navigation, animated: true)
+        return true
+    }
+
     private func openMedia(_ url: URL) {
         let viewer = MediaViewerController(mediaURL: url)
         let navigation = UINavigationController(rootViewController: viewer)

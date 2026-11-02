@@ -54,7 +54,10 @@ class RichMediaNode: ASControlNode {
         // post_hint is Reddit's own statement about where the link points:
         // "image", "hosted:video" and gallery posts are Reddit media, "link"
         // is somebody else's page.
-        let isRedditMedia = link.isImageLink || link.isVideo || link.isGallery
+        // YouTube and Streamable are played in-app, so they get the media
+        // treatment (preview + play badge) rather than an article card.
+        let isExternalVideo = ExternalVideoSource(url: link.url.flatMap(URL.init(string:))) != nil
+        let isRedditMedia = link.isImageLink || link.isVideo || link.isGallery || isExternalVideo
         self.presentation = isRedditMedia ? .fullBleed : .linkCard
         self.cardNode = isRedditMedia ? nil : LinkButtonNode(link: link)
         self.isVeiled = link.isNSFW || link.isSpoiler
@@ -119,7 +122,7 @@ class RichMediaNode: ASControlNode {
                                                                         child: self.veilNode))
             }
 
-            if self.link.isVideo {
+            if self.link.isVideo || ExternalVideoSource(url: self.link.url.flatMap(URL.init(string:))) != nil {
                 media = ASOverlayLayoutSpec(child: media,
                                             overlay: ASCenterLayoutSpec(centeringOptions: .XY,
                                                                         sizingOptions: [],
