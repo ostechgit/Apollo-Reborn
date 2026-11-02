@@ -4,12 +4,12 @@ import AsyncDisplayKit
 // PostCellActionDelegate - what a post cell asks its screen to do
 // Reconstructed from apollo-base 1.15.11 binary analysis (Apollo.PostCellActionDelegate).
 protocol PostCellActionDelegate: AnyObject {
-    func postCell(_ cell: LargePostCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink)
-    func postCell(_ cell: LargePostCellNode, didTapSaveOn link: RDKLink)
-    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink)
-    func postCell(_ cell: LargePostCellNode, didTapMoreOptionsOn link: RDKLink)
-    func postCell(_ cell: LargePostCellNode, didTapSubreddit named: String)
-    func postCell(_ cell: LargePostCellNode, didTapAuthor named: String)
+    func postCell(_ cell: ASCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink)
+    func postCell(_ cell: ASCellNode, didTapSaveOn link: RDKLink)
+    func postCell(_ cell: ASCellNode, didTapMediaOf link: RDKLink)
+    func postCell(_ cell: ASCellNode, didTapMoreOptionsOn link: RDKLink)
+    func postCell(_ cell: ASCellNode, didTapSubreddit named: String)
+    func postCell(_ cell: ASCellNode, didTapAuthor named: String)
 }
 
 // LargePostOptionButtonsNode - the ⋯ ↑ ↓ cluster on the right of the info rows
@@ -122,6 +122,21 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
     // The comments header shows the whole self text; the feed shows an excerpt
     let isInsideComments: Bool
     weak var actionDelegate: PostCellActionDelegate?
+
+    /// Fires when the row is swiped; PostsViewController resolves the point to
+    /// the action configured in `PostsSlideGestures`.
+    var onSlideGesture: ((SlideGesturePoint) -> Void)?
+    private var slidePan: SlideGesturePan?
+
+    override func didLoad() {
+        super.didLoad()
+        guard self.slidePan == nil else { return }
+        let pan = SlideGesturePan(context: .posts) { [weak self] point in
+            self?.onSlideGesture?(point)
+        }
+        pan.attach(to: self.view)
+        self.slidePan = pan
+    }
 
     let titleNode = ASTextNode()
     let postInfoNode: PostInfoNode

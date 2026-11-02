@@ -7,27 +7,27 @@ import AVKit
 // Header actions share the same controller operations as the post menu. This
 // deliberately does not reuse the feed's gallery action (which opens comments).
 extension CommentsViewController: PostCellActionDelegate {
-    func postCell(_ cell: LargePostCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink) {
         self.vote(direction)
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapSaveOn link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapSaveOn link: RDKLink) {
         self.toggleSave()
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapSubreddit named: String) {
+    func postCell(_ cell: ASCellNode, didTapSubreddit named: String) {
         self.openSubreddit(named)
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapAuthor named: String) {
+    func postCell(_ cell: ASCellNode, didTapAuthor named: String) {
         self.openAuthor(named)
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapMoreOptionsOn link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapMoreOptionsOn link: RDKLink) {
         // The detail header has its action menu in the navigation bar.
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapMediaOf link: RDKLink) {
         let mediaLink = link.crosspostParent ?? link
         if ImgurAlbumResolver.albumID(from: mediaLink.url.flatMap(URL.init(string:))) != nil {
             ImgurAlbumResolver.present(from: self, url: mediaLink.url.flatMap(URL.init(string:)))

@@ -17,6 +17,10 @@ class CompactPostCellNode: ASCellNode {
     private let thumbnailNode = ASNetworkImageNode()
     private let separatorNode = ASDisplayNode()
     private let showsThumbnail: Bool
+    /// Fires when the row is swiped; the feed resolves the point to the action
+    /// configured in `PostsSlideGestures`.
+    var onSlideGesture: ((SlideGesturePoint) -> Void)?
+    private var slidePan: SlideGesturePan?
 
     weak var actionDelegate: PostCellActionDelegate?
 
@@ -62,6 +66,16 @@ class CompactPostCellNode: ASCellNode {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func didLoad() {
+        super.didLoad()
+        guard self.slidePan == nil else { return }
+        let pan = SlideGesturePan(context: .posts) { [weak self] point in
+            self?.onSlideGesture?(point)
+        }
+        pan.attach(to: self.view)
+        self.slidePan = pan
     }
 
     /// Stock's Appearance → Thumbnail Size setting (`CompactPostsThumbnailSize`

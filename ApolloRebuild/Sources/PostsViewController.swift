@@ -531,10 +531,18 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             if compact {
                 let node = CompactPostCellNode(link: link, inSpecificSubreddit: inSpecificSubreddit)
                 node.actionDelegate = self
+                node.onSlideGesture = { [weak self, weak node] point in
+                    guard let self = self, let node = node else { return }
+                    self.performSlideGesture(point, on: link, cell: node)
+                }
                 return node
             }
             let node = LargePostCellNode(link: link, inSpecificSubreddit: inSpecificSubreddit)
             node.actionDelegate = self
+            node.onSlideGesture = { [weak self, weak node] point in
+                guard let self = self, let node = node else { return }
+                self.performSlideGesture(point, on: link, cell: node)
+            }
             return node
         }
     }
@@ -559,7 +567,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
     // MARK: - PostCellActionDelegate
 
-    func postCell(_ cell: LargePostCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapVote direction: RDKVoteDirection, on link: RDKLink) {
         guard AccountManager.shared.isLogged else {
             self.promptSignIn(reason: "Sign in to vote on posts.")
             return
@@ -578,30 +586,30 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         let newStatus: RDKVoteStatus = direction == .up ? .upvoted : (direction == .down ? .downvoted : .none)
         link.voteStatus = newStatus
         link.score = previousScore + value(newStatus) - value(previousStatus)
-        cell.updateActionState()
+        (cell as? LargePostCellNode)?.updateActionState()
 
         RDKClient.shared().voteOnThing(withFullName: link.fullName ?? "", direction: direction) { [weak self, weak cell] error in
             guard let error = error else { return }
             link.voteStatus = previousStatus
             link.score = previousScore
-            cell?.updateActionState()
+            (cell as? LargePostCellNode)?.updateActionState()
             self?.showError(title: "Couldn\u{2019}t Vote", error: error)
         }
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapSaveOn link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapSaveOn link: RDKLink) {
         guard AccountManager.shared.isLogged else {
             self.promptSignIn(reason: "Sign in to save posts.")
             return
         }
         let wasSaved = link.saved
         link.saved = !wasSaved
-        cell.updateActionState()
+        (cell as? LargePostCellNode)?.updateActionState()
 
         let completion: RDKCompletionBlock = { [weak self, weak cell] error in
             guard let error = error else { return }
             link.saved = wasSaved
-            cell?.updateActionState()
+            (cell as? LargePostCellNode)?.updateActionState()
             self?.showError(title: wasSaved ? "Couldn\u{2019}t Unsave" : "Couldn\u{2019}t Save", error: error)
         }
         if wasSaved {
@@ -614,15 +622,14 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
     /// The ⋯ in a post cell. Apollo opens its own action sheet here (Save,
     /// Hide, Report, Share, ...); this starts with the three the rebuild can
     /// carry out. A stock action sheet stands in until that sheet is rebuilt.
-    func postCell(_ cell: LargePostCellNode, didTapMoreOptionsOn link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapMoreOptionsOn link: RDKLink) {
         let actions: [Action] = [
             Action(title: link.saved ? "Unsave" : "Save", icon: nil, style: .default) { [weak self, weak cell] _ in
                 guard let self = self, let cell = cell else { return }
                 self.postCell(cell, didTapSaveOn: link)
             },
-            Action(title: "Hide", icon: nil, style: .default) { [weak self, weak cell] _ in
-                guard let self = self, let cell = cell else { return }
-                self.hide(link, cell: cell)
+            Action(title: "Hide", icon: nil, style: .default) { [weak self] _ in
+                self?.hide(link)
             },
             Action(title: "Share", icon: nil, style: .default) { [weak self] _ in
                 guard let self = self, let url = link.permalinkURL else { return }
@@ -634,7 +641,37 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         ActionController.shared.showActionSheet(actions: actions, fromViewController: self)
     }
 
-    private func hide(_ link: RDKLink, cell: LargePostCellNode) {
+    /// Applies the action configured for `point` in the Posts context
+    /// (`PostsSlideGestures`, default upvote / downvote / reply / save).
+    private func performSlideGesture(_ point: SlideGesturePoint, on link: RDKLink, cell: ASCellNode) {
+        let action = SlideGestureSettings.action(at: point, for: .posts)
+        NSLog("[ApolloRebuild] slide gesture posts %@ -> %@", point.rawValueString, action.rawValue)
+        switch action {
+        case .upvote:
+            self.postCell(cell, didTapVote: .up, on: link)
+        case .unupvote, .undownvote:
+            self.postCell(cell, didTapVote: .none, on: link)
+        case .downvote:
+            self.postCell(cell, didTapVote: .down, on: link)
+        case .save, .unsave:
+            self.postCell(cell, didTapSaveOn: link)
+        case .hideAbove:
+            self.hide(link)
+        case .moreOptions:
+            self.postCell(cell, didTapMoreOptionsOn: link)
+        case .reply:
+            // Stock opens the reply composer here; the feed has no composer yet,
+            // so this opens the thread, where Reply lives.
+            self.navigationController?.pushViewController(CommentsViewController(link: link), animated: true)
+        case .collapse, .collapseRoot, .toggleRead, .markRead, .markUnread,
+             .post, .selectMode, .parentComment:
+            // Meaningless on a feed row (collapse is a comment concept, and the
+            // rest are post-detail or composer actions).
+            NSLog("[ApolloRebuild] slide action %@ has no effect on a feed row", action.rawValue)
+        }
+    }
+
+    private func hide(_ link: RDKLink) {
         guard AccountManager.shared.isLogged else {
             self.promptSignIn(reason: "Sign in to hide posts.")
             return
@@ -652,15 +689,15 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         }
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapSubreddit named: String) {
+    func postCell(_ cell: ASCellNode, didTapSubreddit named: String) {
         self.navigationController?.pushViewController(PostsViewController(postsType: .subreddit(named)), animated: true)
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapAuthor named: String) {
+    func postCell(_ cell: ASCellNode, didTapAuthor named: String) {
         self.navigationController?.pushViewController(ProfileViewController(username: named), animated: true)
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
+    func postCell(_ cell: ASCellNode, didTapMediaOf link: RDKLink) {
         if ImgurAlbumResolver.albumID(from: link.url.flatMap(URL.init(string:))) != nil {
             ImgurAlbumResolver.present(from: self, url: link.url.flatMap(URL.init(string:)))
             return
