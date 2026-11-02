@@ -5,6 +5,13 @@
 
 @implementation RDKLink
 
+- (NSString *)previewVideoURL {
+    NSDictionary *first = [(NSArray *)self.preview[@"images"] firstObject];
+    if (![first isKindOfClass:NSDictionary.class]) { return nil; }
+    NSString *url = first[@"variants"][@"mp4"][@"source"][@"url"];
+    return [url isKindOfClass:NSString.class] ? url : nil;
+}
+
 + (NSDictionary<NSString *, id> *)JSONKeyPathsByPropertyKey {
     return [[super JSONKeyPathsByPropertyKey] mtl_dictionaryByAddingEntriesFromDictionary:@{
         @"title": @"data.title",
@@ -45,7 +52,7 @@
         @"crosspostParent": @"data.crosspost_parent_list",
         @"previewImages": @"data.preview.images",
         @"redditVideoURL": @"data.media.reddit_video.fallback_url",
-        @"previewVideoURL": @"data.preview.images.0.variants.mp4.source.url",
+        @"preview": @"data.preview",
         @"pollOptions": @"data.poll_data.options",
         @"pollTotalVotes": @"data.poll_data.total_vote_count",
         @"galleryItemCount": @"data.gallery_data.items",
