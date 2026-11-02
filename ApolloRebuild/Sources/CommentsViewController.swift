@@ -1190,6 +1190,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 cell.onAuthorTapped = { [weak self] username in self?.openAuthor(username) }
                 cell.onMediaTapped = { [weak self] url in self?.openMedia(url) }
                 cell.onBodyTapped = { [weak self] in self?.toggleCollapse(comment) }
+                cell.onSwipedLeft = { [weak self] in self?.replyToComment(comment) }
                 return cell
             }
         case .more(let more, let depth):

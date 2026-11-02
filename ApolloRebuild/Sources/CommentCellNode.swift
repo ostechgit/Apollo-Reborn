@@ -134,12 +134,17 @@ enum CommentBody {
 
 class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelegate {
 
+    private static let swipeThreshold: CGFloat = 70
+
     var onLinkTapped: ((URL) -> Void)?
     /// Tapping a picture embedded in the body opens the media viewer.
     var onMediaTapped: ((URL) -> Void)?
     /// A tap on the body text that is not on a link behaves like a tap on the
     /// row: it collapses or expands the comment.
     var onBodyTapped: (() -> Void)?
+    /// Swiping a comment left opens the reply composer for it, which is what the
+    /// original does (its swipe actions are disabled per direction in Settings).
+    var onSwipedLeft: (() -> Void)?
     var onAuthorTapped: ((String) -> Void)?
 
     func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
@@ -365,6 +370,38 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
         bodyTap.cancelsTouchesInView = false
         bodyTap.delegate = self
         self.bodyNode.view.addGestureRecognizer(bodyTap)
+
+        if self.onSwipedLeft != nil {
+            // Horizontal-only: vertical drags stay with the table.
+            let swipe = UIPanGestureRecognizer(target: self, action: #selector(CommentCellNode.panned(_:)))
+            swipe.delegate = self
+            swipe.maximumNumberOfTouches = 1
+            self.view.addGestureRecognizer(swipe)
+        }
+    }
+
+    @objc private func panned(_ recognizer: UIPanGestureRecognizer) {
+        let translation = recognizer.translation(in: self.view)
+        switch recognizer.state {
+        case .ended:
+            if translation.x < -Self.swipeThreshold, abs(translation.x) > abs(translation.y) {
+                self.onSwipedLeft?()
+            }
+        default:
+            break
+        }
+    }
+
+    /// Let the row's swipe coexist with the table's vertical scrolling.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        let velocity = pan.velocity(in: self.view)
+        return abs(velocity.x) > abs(velocity.y) && velocity.x < 0
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        return false
     }
 
     @objc private func bodyTapped(_ recognizer: UITapGestureRecognizer) {
