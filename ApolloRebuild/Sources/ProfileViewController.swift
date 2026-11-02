@@ -158,7 +158,7 @@ class ProfileViewController: UIViewController, ASTableDataSource, ASTableDelegat
             self.vote(link, action: action, cell: cell)
         case .save, .unsave:
             self.toggleSave(link, cell: cell)
-        case .hideAbove:
+        case .hide, .hideAbove:
             RDKClient.shared().hideLink(link) { [weak self] error in
                 guard error == nil else { return }
                 if let index = self?.posts.firstIndex(where: { $0.fullName == link.fullName }) {
@@ -166,7 +166,7 @@ class ProfileViewController: UIViewController, ASTableDataSource, ASTableDelegat
                     self?.tableNode.reloadData()
                 }
             }
-        case .reply, .moreOptions:
+        case .reply, .moreOptions, .share, .author, .subreddit:
             // Profile posts open their thread, where reply and the action sheet live.
             self.navigationController?.pushViewController(
                 CommentsViewController(link: link), animated: true)

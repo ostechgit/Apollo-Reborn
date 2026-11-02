@@ -676,8 +676,16 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
             self.postCell(cell, didTapVote: .down, on: link)
         case .save, .unsave:
             self.postCell(cell, didTapSaveOn: link)
-        case .hideAbove:
+        case .hide, .hideAbove:
             self.hide(link)
+        case .share:
+            guard let url = link.permalinkURL else { return }
+            let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            self.present(controller, animated: true)
+        case .author:
+            self.postCell(cell, didTapAuthor: link.author ?? "")
+        case .subreddit:
+            self.postCell(cell, didTapSubreddit: link.subreddit ?? "")
         case .moreOptions:
             self.postCell(cell, didTapMoreOptionsOn: link)
         case .reply:

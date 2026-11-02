@@ -1094,8 +1094,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.replyToComment(comment)
         case .moreOptions:
             self.presentActions(self.commentActions(for: comment))
-        case .toggleRead, .markRead, .markUnread, .post, .hideAbove,
-             .selectMode, .parentComment:
+        case .toggleRead, .markRead, .markUnread, .post, .hide, .hideAbove,
+             .selectMode, .parentComment, .share, .author, .subreddit:
             // Not meaningful on a comment thread (read state is a listing-level
             // concept and the rest are post-scoped), so stock's picker would
             // leave these inert here too.

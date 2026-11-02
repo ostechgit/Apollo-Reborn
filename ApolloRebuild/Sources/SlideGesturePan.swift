@@ -213,40 +213,50 @@ extension SlideGestureAction {
         case .toggleRead, .markRead: return "read"
         case .markUnread: return "unread"
         case .post: return "post"
+        case .hide: return "hide"
         case .hideAbove: return "hide-above"
         case .selectMode: return "select-mode"
         case .parentComment: return "parent-comment"
         case .moreOptions: return "more"
+        case .share: return "share"
+        case .author: return "author"
+        case .subreddit: return "subreddit"
         }
     }
 
-    /// Colour of the reveal panel for this action.
+    /// Background colour of the reveal panel.
     ///
-    /// One value was recovered from the binary's colour helper: `F36700`, the
-    /// upvote orange (very close to the #FF5D00 vote-pill brand colour already
-    /// in `ApolloPalette`). The remaining actions' colours were not recoverable
-    /// from the helper, so they use the palette's brand colours where known and
-    /// otherwise conventional choices.
+    /// Recovered from `SlideGestureBuilder.method_26.helper_10040cb4c`, which
+    /// builds a six-digit hex string per action and hands it to
+    /// `UIColor(hex:)`. These are the values its live (argument-zero) arms
+    /// return, so they are exact rather than approximated.
     var indicatorColor: UIColor {
         switch self {
-        case .upvote, .unupvote:
-            return ApolloPalette.upvote
-        case .downvote, .undownvote:
-            return ApolloPalette.downvote
-        case .save, .unsave:
-            return .systemPurple
-        case .reply:
-            return .systemBlue
-        case .collapse, .collapseRoot:
-            return .systemTeal
-        case .hideAbove:
-            return .systemGray
-        case .moreOptions:
-            return ApolloPalette.iconGrey
-        case .selectMode:
-            return .systemGreen
-        default:
-            return .systemGray
+        case .upvote, .unupvote:               return UIColor(apolloHex: "FF6C00")
+        case .downvote, .undownvote:           return UIColor(apolloHex: "565FE3")
+        case .save, .unsave:                   return UIColor(apolloHex: "00AC37")
+        case .collapse, .collapseRoot:         return UIColor(apolloHex: "0082F7")
+        case .reply:                           return UIColor(apolloHex: "23B5FF")
+        case .toggleRead, .markRead, .markUnread, .selectMode:
+            return UIColor(apolloHex: "0D6BE9")
+        case .post, .hide, .hideAbove:         return UIColor(apolloHex: "8348F5")
+        case .parentComment:                   return UIColor(apolloHex: "3BD672")
+        case .moreOptions:                     return UIColor(apolloHex: "C7CCD1")
+        case .share:                           return UIColor(apolloHex: "00C0FF")
+        case .author:                          return UIColor(apolloHex: "2E6FBA")
+        case .subreddit:                       return UIColor(apolloHex: "FF6633")
         }
+    }
+}
+
+extension UIColor {
+    /// `UIColor(hex:)` as Apollo defines it: six hex digits, no leading hash.
+    convenience init(apolloHex hex: String) {
+        var value: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&value)
+        self.init(red: CGFloat((value >> 16) & 0xFF) / 255,
+                  green: CGFloat((value >> 8) & 0xFF) / 255,
+                  blue: CGFloat(value & 0xFF) / 255,
+                  alpha: 1)
     }
 }

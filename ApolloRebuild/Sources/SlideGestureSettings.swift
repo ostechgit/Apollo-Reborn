@@ -101,10 +101,14 @@ enum SlideGestureAction: String, CaseIterable {
     case markRead = "mark-read"
     case markUnread = "mark-unread"
     case post
+    case hide
     case hideAbove = "hide-above"
     case selectMode = "select-mode"
     case parentComment = "parent-comment"
     case moreOptions = "more-options"
+    case share
+    case author
+    case subreddit
 
     /// Titles from the recovered action-title table
     /// (`kApolloNativeActionDefaultTitles`).
@@ -123,10 +127,14 @@ enum SlideGestureAction: String, CaseIterable {
         case .markRead: return "Mark Read"
         case .markUnread: return "Mark Unread"
         case .post: return "Submit Post"
+        case .hide: return "Hide"
         case .hideAbove: return "Hide Posts Above"
         case .selectMode: return "Select Mode"
         case .parentComment: return "Parent Comment"
         case .moreOptions: return "More Options"
+        case .share: return "Share"
+        case .author: return "Author"
+        case .subreddit: return "Subreddit"
         }
     }
 
@@ -146,10 +154,14 @@ enum SlideGestureAction: String, CaseIterable {
         case .markRead: return "option-read"
         case .markUnread: return "option-read"
         case .post: return "option-submit"
+        case .hide: return "option-hide"
         case .hideAbove: return "option-hide"
         case .selectMode: return "option-select-mode"
         case .parentComment: return "option-view-parent"
         case .moreOptions: return "option-more"
+        case .share: return "option-share"
+        case .author: return "option-author"
+        case .subreddit: return "option-subreddit"
         }
     }
 }
