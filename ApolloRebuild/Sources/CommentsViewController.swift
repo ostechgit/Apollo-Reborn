@@ -1119,11 +1119,29 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             let stubs = things.filter { $0 is RDKMoreComments }
             return comments + stubs
         }
-        // A stub with no child ids has nothing to load; it is an artefact of the
-        // response and would otherwise hang around until tapped again.
+        // Ids already accounted for: everything in the thread plus everything
+        // this response is about to insert.
+        func bareID(_ fullName: String) -> String {
+            fullName.hasPrefix("t1_") ? String(fullName.dropFirst(3)) : fullName
+        }
+        var knownIDs = Set(tree.compactMap { row -> String? in
+            if case .comment(let comment, _) = row, let name = comment.fullName { return bareID(name) }
+            return nil
+        })
+        for thing in things {
+            if let comment = thing as? RDKComment, let name = comment.fullName {
+                knownIDs.insert(bareID(name))
+            }
+        }
+
+        // Drop stubs that have nothing left to load: either no child ids at all,
+        // or only ids already present. Reddit can echo a stub for the parent we
+        // just expanded; leaving it in place parks a "N more replies" row above
+        // the replies that were just inserted, and tapping it yields nothing.
         let things = things.filter { thing in
             guard let more = thing as? RDKMoreComments else { return true }
-            return !(more.children ?? []).isEmpty
+            let children = (more.children ?? []).map { bareID($0) }
+            return children.contains { !knownIDs.contains($0) }
         }
 
         var result: [Row] = []

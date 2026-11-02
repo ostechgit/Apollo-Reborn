@@ -110,7 +110,17 @@ assert(C.matchingRows(in: tree, query: "colours") == [0])
 assert(C.matchingRows(in: tree, query: "cafe") == [0])
 assert(C.matchingRows(in: tree, query: "  ") == [])
 assert(C.matchingRows(in: tree, query: "much better") == [])
-print("PASS: comment tree collapse, ordering, cycles, reply insertion, ancestor merge, find matching")
+// A stub echoing ids we already have must not survive the expansion, or it
+// parks a "more replies" row above the replies that were just inserted.
+let echoParent = RDKComment("c001", "post", 0)
+let echoChild = RDKComment("c002", "c001", 1)
+let echoStub = RDKMoreComments("t1_c003", "c001", 1); echoStub.children = ["c002"]
+let echoRows = C.rowsFromMoreChildren([echoChild, echoStub], in: [.comment(echoParent, depth: 0)])
+assert(names(echoRows) == ["c002"])
+let liveStub = RDKMoreComments("t1_c004", "c001", 1); liveStub.children = ["c009"]
+let liveRows = C.rowsFromMoreChildren([echoChild, liveStub], in: [.comment(echoParent, depth: 0)])
+assert(names(liveRows) == ["c002", "t1_c004"])
+print("PASS: comment tree collapse, ordering, cycles, reply insertion, ancestor merge, find matching, phantom stubs")
 '''
 with tempfile.TemporaryDirectory(prefix="apollo-comment-tree-") as work:
     swift = pathlib.Path(work) / "main.swift"
