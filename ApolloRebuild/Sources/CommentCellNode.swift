@@ -189,6 +189,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     /// the same `inline-sticky` / `inline-locked` assets as the post header.
     private let stickyNode = ASImageNode()
     private let lockedNode = ASImageNode()
+    private let cakedayNode = ASImageNode()
     /// A real UIButton, because the ••• menu is a native `UIMenu` and only a
     /// UIButton can show one (`showsMenuAsPrimaryAction`). Texture's
     /// ASButtonNode has no UIButton behind it, so it can't host a menu.
@@ -450,10 +451,14 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             headerChildren.append(self.flairNode)
         }
         let markers: [(ASImageNode, String, Bool)] = [(self.stickyNode, "inline-sticky", self.comment.stickied),
-                                                      (self.lockedNode, "inline-locked", self.comment.isLocked)]
+                                                      (self.lockedNode, "inline-locked", self.comment.isLocked),
+                                                      (self.cakedayNode, "cakeday", self.comment.authorCakeday)]
         for (indicator, asset, shows) in markers where shows {
-            indicator.image = ApolloAssets.image(named: asset)?
-                .withTintColor(CommentCellNode.moreOptionsGrey, renderingMode: .alwaysOriginal)
+            // The cake keeps its own colours; the inline markers are tinted.
+            indicator.image = asset == "cakeday"
+                ? ApolloAssets.originalImage(named: asset)
+                : ApolloAssets.image(named: asset)?
+                    .withTintColor(CommentCellNode.moreOptionsGrey, renderingMode: .alwaysOriginal)
             // ASImageNode defaults to .scaleAspectFill, which distorts a 12pt
             // glyph; the post header's markers use .scaleAspectFit.
             indicator.contentMode = .scaleAspectFit

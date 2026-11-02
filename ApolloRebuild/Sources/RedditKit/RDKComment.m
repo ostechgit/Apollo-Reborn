@@ -22,6 +22,7 @@
         @"edited": @"data.edited",
         @"mediaMetadata": @"data.media_metadata",
         @"isSubmitter": @"data.is_submitter",
+        @"authorCakeday": @"data.author_cakeday",
         @"scoreHidden": @"data.score_hidden",
         @"stickied": @"data.stickied",
         @"collapsed": @"data.collapsed",

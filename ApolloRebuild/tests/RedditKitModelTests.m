@@ -142,6 +142,19 @@ static void TestComments(NSArray *response) {
     CHECK(countBased.isContinueThread, @"zero count determines Continue Thread, not children");
 }
 
+// Reddit reports a cake day as a plain flag on the thing itself, so the UI only
+// needs the mapping, not the author's creation date.
+static void TestAuthorCakeday(void) {
+    RDKLink *link = [RDKLink linkWithDictionary:@{@"id": @"abc", @"author_cakeday": @YES}];
+    CHECK(link.authorCakeday, @"link author_cakeday maps");
+    RDKLink *plain = [RDKLink linkWithDictionary:@{@"id": @"abc"}];
+    CHECK(!plain.authorCakeday, @"absent author_cakeday is false");
+
+    NSDictionary *JSON = @{@"kind": @"t1", @"data": @{@"id": @"c1", @"author_cakeday": @YES}};
+    RDKComment *comment = [[RDKObjectBuilder objectBuilder] objectFromJSON:JSON];
+    CHECK(comment.authorCakeday, @"comment author_cakeday maps");
+}
+
 static void TestPagination(void) {
     RDKPagination *pagination = [RDKPagination paginationWithLimit:25];
     CHECK([pagination.dictionaryValue isEqualToDictionary:@{@"limit": @"25"}], @"%@", pagination.dictionaryValue);
@@ -174,6 +187,7 @@ int main(int argc, const char *argv[]) {
         TestListing(listing);
         TestComments(comments);
         TestPagination();
+        TestAuthorCakeday();
 
         printf("%d checks, %d failures\n", checks, failures);
         return failures == 0 ? 0 : 1;

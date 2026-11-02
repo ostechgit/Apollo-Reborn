@@ -28,6 +28,7 @@
         @"selfPost": @"data.is_self",
         @"isNSFW": @"data.over_18",
         @"isSpoiler": @"data.spoiler",
+        @"authorCakeday": @"data.author_cakeday",
         @"isOC": @"data.is_original_content",
         @"isVideo": @"data.is_video",
         @"isGallery": @"data.is_gallery",

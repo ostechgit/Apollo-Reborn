@@ -38,6 +38,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL selfPost;        // data.is_self
 @property (nonatomic, assign) BOOL isNSFW;          // data.over_18
 @property (nonatomic, assign) BOOL isSpoiler;
+/// data.author_cakeday — true only on the author's cake day.
+@property (nonatomic, assign) BOOL authorCakeday;
 @property (nonatomic, assign) BOOL isOC;            // data.is_original_content
 @property (nonatomic, assign) BOOL isVideo;         // data.is_video (v.redd.it)
 @property (nonatomic, assign) BOOL isGallery;       // data.is_gallery

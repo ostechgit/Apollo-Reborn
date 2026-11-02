@@ -54,6 +54,8 @@ class PostInfoNode: ASDisplayNode {
     private let stickyNode = ASImageNode()
     private let lockedNode = ASImageNode()
     private let savedNode = ASImageNode()
+    /// Shown only on the author's cake day (data.author_cakeday).
+    private let cakedayNode = ASImageNode()
 
     /// Called when the subreddit or author name is tapped. The cell forwards
     /// these to its screen (the original routes them through the same
@@ -94,11 +96,12 @@ class PostInfoNode: ASDisplayNode {
             node.addTarget(self, action: #selector(nameTapped(_:)), forControlEvents: .touchUpInside)
         }
 
-        for indicator in [self.stickyNode, self.lockedNode, self.savedNode] {
+        for indicator in [self.stickyNode, self.lockedNode, self.savedNode, self.cakedayNode] {
             indicator.style.preferredSize = CGSize(width: 13, height: 13)
             indicator.contentMode = .scaleAspectFit
             indicator.isUserInteractionEnabled = false
         }
+        self.cakedayNode.image = ApolloAssets.originalImage(named: "cakeday")
         self.stickyNode.image = ApolloAssets.image(named: "inline-sticky")
         self.lockedNode.image = ApolloAssets.image(named: "inline-locked")
         self.savedNode.image = ApolloAssets.image(named: "inline-saved")
@@ -202,7 +205,8 @@ class PostInfoNode: ASDisplayNode {
         // Indicators sit directly after the author, as the original draws them.
         let indicators: [(ASImageNode, Bool)] = [(self.stickyNode, self.link.stickied),
                                                  (self.lockedNode, self.link.locked),
-                                                 (self.savedNode, self.link.saved)]
+                                                 (self.savedNode, self.link.saved),
+                                                 (self.cakedayNode, self.link.authorCakeday)]
         for (node, shows) in indicators where shows {
             node.style.spacingBefore = 5
             rowChildren.append(node)
