@@ -16,7 +16,7 @@ import AsyncDisplayKit
 // The original also plays video inline, handles crossposts, albums and the
 // NSFW/spoiler veil; none of that is wired up here yet.
 
-class RichMediaNode: ASControlNode, UIGestureRecognizerDelegate {
+class RichMediaNode: ASControlNode {
 
     enum Presentation {
         /// Reddit-hosted media: edge to edge, aspect preserved.
@@ -42,12 +42,6 @@ class RichMediaNode: ASControlNode, UIGestureRecognizerDelegate {
     /// button). A dark scrim hides the picture just as effectively.
     private let blurNode = ASDisplayNode()
     private let veilNode = ASImageNode()
-    /// "1/4" badge for a gallery, which the original draws over the image.
-    private let galleryCountNode = ASTextNode()
-    /// Galleries page in place. A pan recogniser swaps the image rather than
-    /// hosting a scroll view, which keeps every UIKit layout on the main thread.
-    private var galleryIndex = 0
-    private var galleryURLs: [URL] = []
     private var isVeiled: Bool
     private let cardNode: LinkButtonNode?
 
@@ -81,18 +75,6 @@ class RichMediaNode: ASControlNode, UIGestureRecognizerDelegate {
         self.imageNode.isUserInteractionEnabled = false
         self.blurNode.backgroundColor = UIColor(white: 0, alpha: 0.82)
         self.blurNode.isUserInteractionEnabled = false
-        if link.isGallery, let images = link.galleryImages {
-            self.galleryURLs = images.compactMap { $0.url.flatMap(URL.init(string:)) }
-        }
-        if link.isGallery, link.galleryItemCount > 1 {
-            self.galleryCountNode.attributedText = NSAttributedString(string: "1/\(link.galleryItemCount)", attributes: [
-                .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
-                .foregroundColor: UIColor.white,
-            ])
-            self.galleryCountNode.backgroundColor = UIColor(white: 0, alpha: 0.55)
-            self.galleryCountNode.cornerRadius = 11
-            self.galleryCountNode.textContainerInset = UIEdgeInsets(top: 3, left: 8, bottom: 3, right: 8)
-        }
         self.veilNode.contentMode = .center
         self.veilNode.isUserInteractionEnabled = false
         // The catalog rendition is a black diamond with a white "!", so it must
@@ -134,18 +116,6 @@ class RichMediaNode: ASControlNode, UIGestureRecognizerDelegate {
             let natural = CGFloat(item?.height ?? 0) / CGFloat(max(item?.width ?? 0, 1))
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
             var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
-            if self.link.isGallery, self.link.galleryItemCount > 1 {
-                // Anchor the badge to the bottom-right; an infinite inset is not
-                // a valid layout and wedges measuring.
-                media = ASOverlayLayoutSpec(child: media,
-                                            overlay: ASInsetLayoutSpec(insets: UIEdgeInsets(top: 0, left: 0,
-                                                                                            bottom: 10, right: 10),
-                                                                       child: ASRelativeLayoutSpec(
-                                                                        horizontalPosition: .end,
-                                                                        verticalPosition: .end,
-                                                                        sizingOption: .minimumSize,
-                                                                        child: self.galleryCountNode)))
-            }
             if self.isVeiled {
                 // Blur the picture, then centre the badge over it.
                 media = ASOverlayLayoutSpec(child: media, overlay: self.blurNode)
