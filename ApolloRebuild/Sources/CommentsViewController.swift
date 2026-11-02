@@ -122,6 +122,17 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Whether the signed-in account moderates this post's subreddit. Stock only
     /// shows its Moderator row when this is true.
     private var isModerator = false
+    /// Mirrors the original's restoredVisibleComment / restoredContentOffsetY /
+    /// restoredViewWidth: where the reader was, so returning to a thread or
+    /// changing width puts them back instead of at the top.
+    private var restoredCommentFullName: String?
+    private var restoredOffsetY: CGFloat = 0
+    private var restoredWidth: CGFloat = 0
+    private var hasRestoredOnce = false
+    /// Cursor for the next page of top-level comments, mirroring the original's
+    /// batch fetching instead of stopping after the first request.
+    private var nextCommentsAfter: String?
+    private var isLoadingNextPage = false
     private var moderationChecked = false
     private let context: Int?
     private let continuingThread: Bool
@@ -159,6 +170,27 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        self.restoreScrollPositionIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        self.captureScrollPosition()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // A width change invalidates every cell height, so restore by comment.
+        let width = self.tableNode.view.bounds.width
+        if self.restoredWidth > 0, abs(width - self.restoredWidth) > 1 {
+            self.restoreScrollPositionIfNeeded(force: true)
+        } else if width > 0 {
+            self.restoredWidth = width
+        }
     }
 
     override func viewDidLoad() {
@@ -608,6 +640,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                     return
                 }
                 if let link = link { self.link = link }
+                self.nextCommentsAfter = nil
                 self.tree = Self.flatten(comments ?? [], depth: 0)
                 self.rebuildRows()
                 self.configureNavigationBar()
@@ -627,6 +660,75 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
             self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
                 commentSort: self.commentSort, pagination: nil, completion: completion)
         }
+    }
+
+    /// Pages the thread in as the reader reaches the end, the way the original's
+    /// list adapter batch fetch works.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard let after = self.nextCommentsAfter, !self.isLoadingNextPage, !self.isLoadingComments else { return }
+        let remaining = scrollView.contentSize.height - scrollView.contentOffset.y - scrollView.bounds.height
+        guard remaining < 400 else { return }
+        self.loadNextPage(after: after)
+    }
+
+    private func loadNextPage(after: String) {
+        self.isLoadingNextPage = true
+        let generation = self.loadGeneration
+        RDKClient.shared().commentsPage(forLinkWithIdentifier: self.link.identifier ?? "",
+                                       sort: self.commentSort, after: after) { [weak self] comments, next, error in
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.loadGeneration else { return }
+                self.isLoadingNextPage = false
+                guard error == nil, let comments = comments, !comments.isEmpty else { return }
+                self.nextCommentsAfter = next
+                // New top-level comments append to the tree; the diff in
+                // commitTreeChange inserts just those rows.
+                let appended = Self.flatten(comments, depth: 0)
+                self.tree.append(contentsOf: appended)
+                self.commitTreeChange()
+            }
+        }
+    }
+
+    /// Remembers the comment at the top of the viewport and the pixel offset into
+    /// it, which is what the original restores.
+    private func captureScrollPosition() {
+        let table = self.tableNode.view
+        guard table.bounds.width > 0 else { return }
+        let visible = table.indexPathsForVisibleRows?.filter { $0.section == 1 }.sorted() ?? []
+        guard let first = visible.first, first.row < self.rows.count else { return }
+        if case .comment(let comment, _) = self.rows[first.row], let name = comment.fullName {
+            self.restoredCommentFullName = name
+        }
+        let rowRect = table.rectForRow(at: first)
+        self.restoredOffsetY = table.contentOffset.y - rowRect.minY
+        self.restoredWidth = table.bounds.width
+    }
+
+    private func restoreScrollPositionIfNeeded(force: Bool = false) {
+        guard !self.focusedCommentID_isPending else { return }
+        let widthChanged = force && abs(self.tableNode.view.bounds.width - self.restoredWidth) > 1
+        guard widthChanged || !self.hasRestoredOnce else { return }
+        defer { self.hasRestoredOnce = true; self.restoredWidth = self.tableNode.view.bounds.width }
+        guard let name = self.restoredCommentFullName,
+              let row = self.rows.firstIndex(where: { row in
+                  if case .comment(let comment, _) = row { return comment.fullName == name }
+                  return false
+              }) else { return }
+        let indexPath = IndexPath(row: row, section: 1)
+        self.tableNode.scrollToRow(at: indexPath, at: .top, animated: false)
+        let delta = self.restoredOffsetY
+        if abs(delta) > 0.5 {
+            let table = self.tableNode.view
+            let rect = table.rectForRow(at: indexPath)
+            let target = rect.minY + delta
+            let maxY = max(0, table.contentSize.height - table.bounds.height + table.adjustedContentInset.bottom)
+            table.setContentOffset(CGPoint(x: 0, y: min(max(0, target), maxY)), animated: false)
+        }
+    }
+
+    private var focusedCommentID_isPending: Bool {
+        self.focusedCommentID != nil && !self.hasScrolledToFocusedComment
     }
 
     /// A thread opened from a comment permalink starts at that comment, which is

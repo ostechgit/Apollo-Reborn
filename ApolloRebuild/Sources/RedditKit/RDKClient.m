@@ -618,6 +618,34 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     } completion:completion];
 }
 
+// MARK: - Comment pagination
+
+- (NSURLSessionDataTask *)commentsPageForLinkWithIdentifier:(NSString *)identifier sort:(RDKCommentSortingMethod)sort after:(NSString *)after completion:(void (^)(NSArray<RDKThing *> *, NSString *, NSError *))completion {
+    NSString *bare = [identifier hasPrefix:@"t3_"] ? [identifier substringFromIndex:3] : identifier;
+    if (!bare.length) {
+        completion(nil, nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"A post is required."]);
+        return nil;
+    }
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithObject:@20 forKey:@"depth"];
+    NSString *sortName = RDKStringFromCommentSortingMethod(sort);
+    if (sortName) { parameters[@"sort"] = sortName; }
+    if (after.length) { parameters[@"after"] = after; }
+    NSString *path = [NSString stringWithFormat:@"comments/%@.json", bare];
+    return [self getPath:path parameters:parameters completion:^(id response, NSError *error) {
+        if (error) { completion(nil, nil, error); return; }
+        NSArray *listings = [response isKindOfClass:NSArray.class] ? (NSArray *)response : nil;
+        if (listings.count < 2) {
+            completion(nil, nil, [self errorWithCode:RDKClientErrorInvalidResponse description:@"Expected a comment listing."]);
+            return;
+        }
+        id listing = listings[1];
+        NSArray *things = [self objectsFromListingResponse:listing];
+        NSDictionary *data = [listing isKindOfClass:NSDictionary.class] ? listing[@"data"] : nil;
+        NSString *next = [data[@"after"] isKindOfClass:NSString.class] ? data[@"after"] : nil;
+        completion(things, next, nil);
+    }];
+}
+
 // MARK: - Subreddit rules
 
 - (NSURLSessionDataTask *)rulesForSubreddit:(NSString *)subreddit completion:(void (^)(NSArray<NSDictionary *> *, NSError *))completion {
