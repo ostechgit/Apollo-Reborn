@@ -35,6 +35,9 @@ class RichMediaNode: ASControlNode {
     /// of the first two or three images (decompiled 0x100300a98). One square
     /// image on the left with two stacked beside it once there are three.
     private var mosaicNodes: [ASNetworkImageNode] = []
+    /// Stock plays v.redd.it video inline (muted, pausing off-screen) and keeps
+    /// the full-screen player for sound; the feed used to draw only the still.
+    private var inlineVideoNode: CommentVideoNode?
     private let playNode = ASImageNode()
     /// NSFW and spoiler posts are blurred behind a centred badge until the
     /// reader taps. The badge assets are the original's `obscured-nsfw` /
@@ -87,6 +90,13 @@ class RichMediaNode: ASControlNode {
             }
         }
 
+        if link.isVideo, let url = link.redditVideoURL.flatMap(URL.init(string:)) {
+            let node = CommentVideoNode(url: url)
+            // Taps belong to the control so the full-screen player still opens.
+            node.isUserInteractionEnabled = false
+            self.inlineVideoNode = node
+        }
+
         self.imageNode.contentMode = .scaleAspectFill
         self.imageNode.clipsToBounds = true
         self.imageNode.placeholderColor = .secondarySystemBackground
@@ -135,7 +145,12 @@ class RichMediaNode: ASControlNode {
 
             let natural = CGFloat(item?.height ?? 0) / CGFloat(max(item?.width ?? 0, 1))
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
-            var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
+            var media: ASLayoutSpec
+            if let inline = self.inlineVideoNode {
+                media = ASRatioLayoutSpec(ratio: ratio, child: inline)
+            } else {
+                media = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
+            }
             if self.mosaicNodes.count >= 2 {
                 media = ASRatioLayoutSpec(ratio: 9.0 / 16.0, child: self.mosaicSpec(width: width))
             }
