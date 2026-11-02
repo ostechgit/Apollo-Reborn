@@ -111,6 +111,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     deinit {
         self.threadTask?.cancel()
+        self.liveSortTimer?.invalidate()
     }
 
     /// Apollo's floating "jump to the next comment" button, bottom right.
@@ -133,6 +134,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// batch fetching instead of stopping after the first request.
     private var nextCommentsAfter: String?
     private var isLoadingNextPage = false
+    /// Mirrors the original's liveSortTimer: while "Live Update" is the chosen
+    /// sort, the thread is polled and new comments are inserted as they arrive.
+    private var liveSortTimer: Timer?
     private var moderationChecked = false
     private let context: Int?
     private let continuingThread: Bool
@@ -175,12 +179,17 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         self.restoreScrollPositionIfNeeded()
+        self.updateLiveSortTimer()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         self.captureScrollPosition()
+        // Polling must not outlive the screen.
+        self.liveSortTimer?.invalidate()
+        self.liveSortTimer = nil
     }
+
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -256,7 +265,19 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         more.accessibilityLabel = "Comment Options"
         self.moreItem = more
 
-        self.navigationItem.rightBarButtonItems = [more, sort]
+        var items = [more, sort]
+        if self.isModerator {
+            // The original has a dedicated moderatorBarButtonItem rather than
+            // folding moderation into the ⋯ sheet.
+            let moderator = UIBarButtonItem(image: ApolloAssets.image(named: "mod-badge-small"),
+                                            primaryAction: UIAction { [weak self] _ in
+                guard let self = self else { return }
+                self.presentPostModeration()
+            })
+            moderator.accessibilityLabel = "Moderator Actions"
+            items.insert(moderator, at: 0)
+        }
+        self.navigationItem.rightBarButtonItems = items
     }
 
     /// Wraps a control in the glass capsule iOS 26 draws around nav-bar items.
@@ -311,6 +332,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 guard let self = self else { return }
                 self.commentSort = method
                 UserDefaults.standard.set(method.rawValue, forKey: CommentsViewController.commentSortKey)
+                self.updateLiveSortTimer()
                 // The button draws the chosen sort's glyph from now on.
                 self.sortItem?.image = ApolloAssets.image(named: CommentsViewController.sortGlyph(method))
                 self.collapsedComments.removeAll()
@@ -659,6 +681,46 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         } else {
             self.threadTask = RDKClient.shared().linkAndComments(forLinkWithIdentifier: self.link.identifier ?? "",
                 commentSort: self.commentSort, pagination: nil, completion: completion)
+        }
+    }
+
+    /// Starts or stops the live poller to match the current sort.
+    private func updateLiveSortTimer() {
+        self.liveSortTimer?.invalidate()
+        self.liveSortTimer = nil
+        guard self.commentSort == .live, self.viewIfLoaded?.window != nil else { return }
+        // Interval is inferred: the original owns a repeating timer but the
+        // constant is not in the saved exports.
+        self.liveSortTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.pollLiveThread()
+        }
+    }
+
+    /// Fetches the first page and prepends comments the thread has not seen, as a
+    /// live thread does.
+    private func pollLiveThread() {
+        guard !self.isLoadingComments, !self.isLoadingNextPage else { return }
+        let generation = self.loadGeneration
+        RDKClient.shared().commentsPage(forLinkWithIdentifier: self.link.identifier ?? "",
+                                       sort: .new, after: nil) { [weak self] comments, _, error in
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.loadGeneration, error == nil,
+                      let comments = comments, !comments.isEmpty else { return }
+                let known = Set(self.tree.compactMap { row -> String? in
+                    if case .comment(let comment, _) = row { return comment.fullName }
+                    return nil
+                })
+                let fresh = comments.compactMap { $0 as? RDKComment }
+                    .filter { comment in
+                        guard let name = comment.fullName else { return false }
+                        return !known.contains(name) && comment.parentID == self.link.fullName
+                    }
+                guard !fresh.isEmpty else { return }
+                // Newest first, matching a "new" style thread.
+                let rows = fresh.reversed().map { Row.comment($0, depth: 0) }
+                self.tree.insert(contentsOf: rows, at: 0)
+                self.commitTreeChange()
+            }
         }
     }
 
@@ -1186,8 +1248,42 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 if let user = entry as? RDKUser { return user.username }
                 return entry as? String
             }
-            self.isModerator = names.contains { $0.caseInsensitiveCompare(subreddit) == .orderedSame }
+            let moderates = names.contains { $0.caseInsensitiveCompare(subreddit) == .orderedSame }
+            guard moderates != self.isModerator else { return }
+            self.isModerator = moderates
+            self.configureNavigationBar()
         }
+    }
+
+    /// Post-level moderation, which the nav-bar button opens.
+    private func presentPostModeration() {
+        let sheet = UIAlertController(title: "Moderator", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Approve", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            RDKClient.shared().approve(self.link) { [weak self] error in
+                self?.reportModeration(error, success: "Approved")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            RDKClient.shared().remove(self.link, spam: false) { [weak self] error in
+                self?.reportModeration(error, success: "Removed")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: self.link.locked ? "Unlock" : "Lock", style: .default) { [weak self] _ in
+            guard let self = self, let fullName = self.link.fullName else { return }
+            RDKClient.shared().lockLink(withFullname: fullName) { [weak self] error in
+                self?.reportModeration(error, success: "Locked")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "Distinguish", style: .default) { [weak self] _ in
+            guard let self = self, let fullName = self.link.fullName else { return }
+            RDKClient.shared().distinguishThing(withFullName: fullName, status: 1) { [weak self] error in
+                self?.reportModeration(error, success: "Distinguished")
+            }
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        self.presentSheet(sheet)
     }
 
     private func presentModeration(for comment: RDKComment) {
