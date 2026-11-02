@@ -560,6 +560,39 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.present(navigation, animated: true)
     }
 
+    /// Stock cannot vote in a poll through the API: it explains that voting
+    /// happens on the Reddit mobile site, opens it, and refreshes the results
+    /// when the reader comes back.
+    static func presentPollVoting(from viewController: UIViewController, permalink: String?,
+                                  refresh: @escaping () -> Void) {
+        let defaultsKey = "pollVotingExplained"
+        let explained = UserDefaults.standard.bool(forKey: defaultsKey)
+        let openBrowser = { [weak viewController] in
+            guard let viewController = viewController,
+                  let permalink = permalink,
+                  let url = URL(string: "https://www.reddit.com" + permalink) else { return }
+            let browser = SFSafariViewController(url: url)
+            browser.delegate = nil
+            viewController.present(browser, animated: true)
+            // SFSafariViewController has no dismissal callback here; refresh when
+            // it is gone, which is what the original does on return.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                                                       object: nil, queue: .main) { _ in refresh() }
+            }
+        }
+
+        guard !explained else { openBrowser(); return }
+        UserDefaults.standard.set(true, forKey: defaultsKey)
+
+        let alert = UIAlertController(
+            title: "Voting in Polls",
+            message: "Voting in polls (required to see the results) currently requires jumping to the Reddit mobile site.\n\nPlace your vote there, then come back and Apollo will update and show the results.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Ah Ha, Gotcha!", style: .default) { _ in openBrowser() })
+        viewController.present(alert, animated: true)
+    }
+
     private func openLink(_ url: URL) {
         if let route = RedditCommentRoute(url: url), let navigation = self.navigationController {
             route.push(on: navigation)
@@ -1208,6 +1241,12 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 let cell = LargePostCellNode(link: link, isInsideComments: true)
                 cell.actionDelegate = self
                 cell.onLinkTapped = { [weak self] url in self?.openLink(url) }
+                cell.onPollTapped = { [weak self] in
+                    guard let self = self else { return }
+                    Self.presentPollVoting(from: self, permalink: self.link.permalink) { [weak self] in
+                        self?.loadComments()
+                    }
+                }
                 cell.onReplyTapped = { [weak self] in self?.replyToPost() }
                 cell.onShareTapped = { [weak self] in self?.share() }
                 return cell

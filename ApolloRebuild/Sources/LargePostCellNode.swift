@@ -104,6 +104,9 @@ class LargePostOptionButtonsNode: ASDisplayNode {
 class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
 
     var onLinkTapped: ((URL) -> Void)?
+    /// Poll options are not votable through the API: stock opens the Reddit
+    /// mobile site and refreshes the results when the reader comes back.
+    var onPollTapped: (() -> Void)?
 
     func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
                   value: Any, at point: CGPoint, textRange: NSRange) {
@@ -125,7 +128,7 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
     let selfTextNode = ASTextNode()
     /// Poll options with their share of the vote, drawn under the self text the
     /// way the original shows a poll.
-    private var pollNodes: [ASTextNode] = []
+    private var pollNodes: [ASButtonNode] = []
     let richMediaNode: RichMediaNode?
     /// A crosspost draws its PARENT's media inside a CrosspostNode card instead
     /// of a plain RichMediaNode; the cell still owns the media tap.
@@ -171,15 +174,16 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
             self.selfTextNode.isUserInteractionEnabled = true
         }
         self.pollNodes = (link.pollOptions ?? []).map { option in
-            let node = ASTextNode()
+            let node = ASButtonNode()
             let text = option["text"] as? String ?? ""
             let votes = (option["vote_count"] as? NSNumber)?.intValue ?? 0
             let total = max(link.pollTotalVotes, 1)
             let share = Int((Double(votes) / Double(total) * 100).rounded())
-            node.attributedText = NSAttributedString(string: "\(text)   \(share)%", attributes: [
+            node.setAttributedTitle(NSAttributedString(string: "\(text)   \(share)%", attributes: [
                 .font: UIFont.systemFont(ofSize: 15),
                 .foregroundColor: UIColor.label,
-            ])
+            ]), for: .normal)
+            node.addTarget(self, action: #selector(LargePostCellNode.pollTapped), forControlEvents: .touchUpInside)
             return node
         }
         self.selfTextNode.maximumNumberOfLines = isInsideComments ? 0 : 3
@@ -277,6 +281,10 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
     func updateActionState() {
         self.postInfoNode.update()
         self.optionButtonsNode.update()
+    }
+
+    @objc private func pollTapped() {
+        self.onPollTapped?()
     }
 
     // MARK: - Layout
