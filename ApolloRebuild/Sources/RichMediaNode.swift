@@ -16,7 +16,7 @@ import AsyncDisplayKit
 // The original also plays video inline, handles crossposts, albums and the
 // NSFW/spoiler veil; none of that is wired up here yet.
 
-class RichMediaNode: ASControlNode {
+class RichMediaNode: ASControlNode, UIGestureRecognizerDelegate {
 
     enum Presentation {
         /// Reddit-hosted media: edge to edge, aspect preserved.
@@ -44,6 +44,10 @@ class RichMediaNode: ASControlNode {
     private let veilNode = ASImageNode()
     /// "1/4" badge for a gallery, which the original draws over the image.
     private let galleryCountNode = ASTextNode()
+    /// Galleries page in place. A pan recogniser swaps the image rather than
+    /// hosting a scroll view, which keeps every UIKit layout on the main thread.
+    private var galleryIndex = 0
+    private var galleryURLs: [URL] = []
     private var isVeiled: Bool
     private let cardNode: LinkButtonNode?
 
@@ -77,6 +81,9 @@ class RichMediaNode: ASControlNode {
         self.imageNode.isUserInteractionEnabled = false
         self.blurNode.backgroundColor = UIColor(white: 0, alpha: 0.82)
         self.blurNode.isUserInteractionEnabled = false
+        if link.isGallery, let images = link.galleryImages {
+            self.galleryURLs = images.compactMap { $0.url.flatMap(URL.init(string:)) }
+        }
         if link.isGallery, link.galleryItemCount > 1 {
             self.galleryCountNode.attributedText = NSAttributedString(string: "1/\(link.galleryItemCount)", attributes: [
                 .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
