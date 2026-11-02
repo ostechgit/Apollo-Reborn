@@ -25,8 +25,6 @@ class ComposeViewController: UIViewController {
         self.onSubmitted = onSubmitted
     }
 
-    /// Drafts are keyed by reply target so switching threads never loses text.
-    private var draftKey: String? { self.replyTarget.map { "composeDraft:\($0)" } }
     
     init(isPost: Bool) {
         self.isPost = isPost
@@ -95,9 +93,6 @@ class ComposeViewController: UIViewController {
         bodyTextView.font = UIFont.systemFont(ofSize: 14)
         stack.addArrangedSubview(bodyTextView)
         self.bodyTextView = bodyTextView
-        if let draftKey = self.draftKey {
-            bodyTextView.text = UserDefaults.standard.string(forKey: draftKey) ?? ""
-        }
         bodyTextView.delegate = self
         stack.addArrangedSubview(self.formattingBar())
         
@@ -135,17 +130,13 @@ class ComposeViewController: UIViewController {
                 self.present(alert, animated: true)
                 return
             }
-            // The reply landed, so the draft is no longer needed.
-            if let draftKey = self.draftKey {
-                UserDefaults.standard.removeObject(forKey: draftKey)
-            }
             self.onSubmitted?(comment)
             self.dismiss(animated: true)
         }
     }
 }
 
-// MARK: - Formatting toolbar + drafts
+// MARK: - Formatting toolbar
 
 extension ComposeViewController: UITextViewDelegate {
 
@@ -195,19 +186,5 @@ extension ComposeViewController: UITextViewDelegate {
         textView.text = text.replacingCharacters(in: selection, with: replacement)
         let caret = selection.location + (replacement as NSString).length
         textView.selectedRange = NSRange(location: caret, length: 0)
-        self.persistDraft()
-    }
-
-    func textViewDidChange(_ textView: UITextView) {
-        self.persistDraft()
-    }
-
-    private func persistDraft() {
-        guard let draftKey = self.draftKey, let text = self.bodyTextView?.text else { return }
-        if text.isEmpty {
-            UserDefaults.standard.removeObject(forKey: draftKey)
-        } else {
-            UserDefaults.standard.set(text, forKey: draftKey)
-        }
     }
 }
