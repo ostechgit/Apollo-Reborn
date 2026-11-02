@@ -1,4 +1,5 @@
 import UIKit
+import AVFoundation
 import AsyncDisplayKit
 
 // MediaViewerController - fullscreen media viewer for images and videos
@@ -36,6 +37,18 @@ class MediaViewerController: UIViewController {
         ])
         
         self.imageView = imageView
+
+        // Album tiles can be videos; play those with AVPlayer.
+        if let url = self.mediaURL, url.pathExtension.lowercased() == "mp4" {
+            imageView.isHidden = true
+            let player = AVPlayer(url: url)
+            let playerLayer = AVPlayerLayer(player: player)
+            playerLayer.videoGravity = .resizeAspect
+            playerLayer.frame = self.view.bounds
+            self.view.layer.addSublayer(playerLayer)
+            player.play()
+            return
+        }
         
         // Load image
         if let url = self.mediaURL {

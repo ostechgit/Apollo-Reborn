@@ -69,7 +69,8 @@ enum ImgurAlbumResolver {
 
         let urls = images.compactMap { image -> URL? in
             guard let link = image["link"] as? String,
-                  let type = image["type"] as? String, type.hasPrefix("image/") else { return nil }
+                  let type = image["type"] as? String,
+                  type.hasPrefix("image/") || type == "video/mp4" else { return nil }
             return URL(string: link)
         }
         return urls.isEmpty ? nil : Album(imageURLs: urls)

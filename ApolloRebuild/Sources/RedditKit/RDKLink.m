@@ -45,6 +45,7 @@
         @"crosspostParent": @"data.crosspost_parent_list",
         @"previewImages": @"data.preview.images",
         @"redditVideoURL": @"data.media.reddit_video.fallback_url",
+        @"previewVideoURL": @"data.preview.images.0.variants.mp4.source.url",
         @"pollOptions": @"data.poll_data.options",
         @"pollTotalVotes": @"data.poll_data.total_vote_count",
         @"galleryItemCount": @"data.gallery_data.items",

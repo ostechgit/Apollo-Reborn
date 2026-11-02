@@ -90,6 +90,13 @@ class RichMediaNode: ASControlNode {
             }
         }
 
+        // Giphy/gif posts carry an MP4 rendition in the preview variants; stock
+        // animates those inline too.
+        if !link.isVideo, let url = link.previewVideoURL.flatMap(URL.init(string:)) {
+            let node = CommentVideoNode(url: url)
+            node.isUserInteractionEnabled = false
+            self.inlineVideoNode = node
+        }
         if link.isVideo, let url = link.redditVideoURL.flatMap(URL.init(string:)) {
             let node = CommentVideoNode(url: url)
             // Taps belong to the control so the full-screen player still opens.
