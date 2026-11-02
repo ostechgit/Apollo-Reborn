@@ -71,6 +71,9 @@ class RichMediaNode: ASControlNode {
         self.automaticallyManagesSubnodes = true
         self.cardNode?.isUserInteractionEnabled = false
 
+        // A mosaic that overflows its 16:9 box must not paint over the rows
+        // below it.
+        self.clipsToBounds = true
         if link.isGallery, let images = link.galleryImages, images.count >= 2 {
             self.mosaicNodes = images.prefix(3).map { item in
                 let node = ASNetworkImageNode()
@@ -134,7 +137,7 @@ class RichMediaNode: ASControlNode {
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
             var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
             if self.mosaicNodes.count >= 2 {
-                media = ASRatioLayoutSpec(ratio: 9.0 / 16.0, child: self.mosaicSpec())
+                media = ASRatioLayoutSpec(ratio: 9.0 / 16.0, child: self.mosaicSpec(width: width))
             }
             if self.isVeiled {
                 // Blur the picture, then centre the badge over it.
@@ -155,25 +158,45 @@ class RichMediaNode: ASControlNode {
         }
     }
 
-    /// The 16:9 mosaic: two halves, or a square left column with two stacked
-    /// beside it. Gutters are 1pt, as the original's layout uses.
-    private func mosaicSpec() -> ASLayoutSpec {
+    /// The 16:9 mosaic, with stock's exact geometry from `0x100300a98`:
+    /// height = width * 0.5625; two images split the width with a 1pt gutter;
+    /// three give the first a square (height − 1) and stack the other two at
+    /// (height − 2) / 2 each. Sizes are set in points per pass, as the original
+    /// does — leaving children unsized makes ASNetworkImageNode fall back to a
+    /// zero intrinsic size, which is why a second image stayed blank and could
+    /// overflow the box.
+    private func mosaicSpec(width: CGFloat) -> ASLayoutSpec {
         let spacing: CGFloat = 1
-        if self.mosaicNodes.count >= 3 {
+        let height = (width * 9.0 / 16.0).rounded()
+        let nodes = self.mosaicNodes
+
+        if nodes.count >= 3 {
+            let leftWidth = max(height - spacing, 1)
+            let rightWidth = max(width - leftWidth - spacing, 1)
+            let stackedHeight = max((height - spacing * 2) / 2, 1)
+
+            nodes[0].style.width = ASDimension(unit: .points, value: leftWidth)
+            nodes[0].style.height = ASDimension(unit: .points, value: height)
+            for node in nodes[1...2] {
+                node.style.width = ASDimension(unit: .points, value: rightWidth)
+                node.style.height = ASDimension(unit: .points, value: stackedHeight)
+            }
             let right = ASStackLayoutSpec(direction: .vertical, spacing: spacing,
-                                          justifyContent: .start, alignItems: .stretch,
-                                          children: Array(self.mosaicNodes[1...2]))
-            right.style.flexGrow = 1
-            let left = self.mosaicNodes[0]
-            left.style.flexGrow = 0
-            left.style.width = ASDimension(unit: .fraction, value: 0.5625)
+                                          justifyContent: .start, alignItems: .start,
+                                          children: Array(nodes[1...2]))
             return ASStackLayoutSpec(direction: .horizontal, spacing: spacing,
-                                     justifyContent: .start, alignItems: .stretch,
-                                     children: [left, right])
+                                     justifyContent: .start, alignItems: .start,
+                                     children: [nodes[0], right])
+        }
+
+        let halfWidth = max((width - spacing) / 2, 1)
+        for node in nodes {
+            node.style.width = ASDimension(unit: .points, value: halfWidth)
+            node.style.height = ASDimension(unit: .points, value: height)
         }
         return ASStackLayoutSpec(direction: .horizontal, spacing: spacing,
-                                 justifyContent: .start, alignItems: .stretch,
-                                 children: self.mosaicNodes)
+                                 justifyContent: .start, alignItems: .start,
+                                 children: nodes)
     }
 
     // MARK: - Actions
