@@ -65,6 +65,15 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         return false
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Re-apply once the table has a width (and after rotation).
+        if self.bannerImage != nil,
+           abs((self.tableNode.view.tableHeaderView?.bounds.width ?? 0) - self.tableNode.view.bounds.width) > 1 {
+            self.applyBannerHeader()
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -295,20 +304,34 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
     /// Stock shows the subreddit's header banner in that subreddit's feed
     /// (UltraHeaderBannerTableViewCell), scrolling away with the posts.
+    private var bannerImage: UIImage?
+    private var bannerRequestURL: String?
+
     private func loadSubredditBanner() {
-        guard case .subreddit(let name) = self.currentPostsType else { return }
+        guard case .subreddit(let name) = self.currentPostsType, self.bannerRequestURL == nil else { return }
+        self.bannerRequestURL = name
         RDKClient.shared().subredditBanner(forName: name) { [weak self] urlString, _ in
             guard let self = self, let urlString = urlString, let url = URL(string: urlString) else { return }
-            let banner = ASNetworkImageNode()
-            banner.url = url
-            banner.contentMode = .scaleAspectFill
-            banner.clipsToBounds = true
-            banner.isUserInteractionEnabled = false
-            let host = UIView(frame: CGRect(x: 0, y: 0, width: self.view.bounds.width, height: 110))
-            host.addSubnode(banner)
-            banner.frame = host.bounds
-            self.tableNode.view.tableHeaderView = host
+            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+                guard let self = self, let data = data, let image = UIImage(data: data) else { return }
+                DispatchQueue.main.async {
+                    self.bannerImage = image
+                    self.applyBannerHeader()
+                }
+            }.resume()
         }
+    }
+
+    /// The header needs the table's real width, which is zero during viewDidLoad.
+    private func applyBannerHeader() {
+        guard let image = self.bannerImage else { return }
+        let width = max(self.tableNode.view.bounds.width, self.view.bounds.width)
+        guard width > 0 else { return }
+        let host = UIImageView(frame: CGRect(x: 0, y: 0, width: width, height: 110))
+        host.image = image
+        host.contentMode = .scaleAspectFill
+        host.clipsToBounds = true
+        self.tableNode.view.tableHeaderView = host
     }
 
     private func applyReadFilter() {

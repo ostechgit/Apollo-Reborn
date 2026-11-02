@@ -661,7 +661,15 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     return [self getPath:path parameters:nil completion:^(id response, NSError *error) {
         if (error) { completion(nil, error); return; }
         NSDictionary *data = [response isKindOfClass:NSDictionary.class] ? response[@"data"] : nil;
-        NSString *banner = [data[@"banner_img"] isKindOfClass:NSString.class] ? data[@"banner_img"] : nil;
+        // Subs report the wide banner under different keys depending on how old
+        // their styling is.
+        NSArray *keys = @[@"banner_img", @"banner_background_image", @"header_img"];
+        NSString *banner = nil;
+        for (NSString *key in keys) {
+            id value = data[key];
+            if ([value isKindOfClass:NSString.class] && [value length] > 0) { banner = value; break; }
+        }
+        NSLog(@"[ApolloRebuild] subreddit banner r/%@: %@", name, banner.length ? @"found" : @"none");
         completion(banner, nil);
     }];
 }
