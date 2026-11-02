@@ -539,13 +539,11 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         self.navigationController?.pushViewController(ProfileViewController(username: named), animated: true)
     }
 
-    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {        if link.isVideo, let videoURL = link.redditVideoURL.flatMap(URL.init(string:)) {
-            // v.redd.it's fallback MP4 has no audio track; the original remuxes DASH audio in
-            let player = AVPlayerViewController()
-            player.player = AVPlayer(url: videoURL)
-            self.present(player, animated: true) {
-                player.player?.play()
-            }
+    func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
+        if link.isVideo, let videoURL = link.redditVideoURL.flatMap(URL.init(string:)) {
+            // v.redd.it's fallback MP4 is video-only; the sound is a separate
+            // DASH rendition, so compose them the way the original does.
+            RedditVideoComposer.present(from: self, link: link, fallbackURL: videoURL)
         } else if link.isImageLink || (link.hasPreviewImage && !link.isGallery && link.domain?.hasSuffix("redd.it") == true) {
             let imageURL = link.isImageLink ? link.url.flatMap(URL.init(string:)) : link.previewImages?.last?.url.flatMap(URL.init(string:))
             let mediaViewer = MediaViewerController(mediaURL: imageURL)

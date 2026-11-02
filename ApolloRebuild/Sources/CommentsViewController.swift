@@ -35,9 +35,7 @@ extension CommentsViewController: PostCellActionDelegate {
             guard !urls.isEmpty else { return }
             viewer = MediaPageViewController(mediaURLs: urls)
         } else if mediaLink.isVideo, let url = mediaLink.redditVideoURL.flatMap(URL.init(string:)) {
-            let player = AVPlayerViewController()
-            player.player = AVPlayer(url: url)
-            self.present(player, animated: true) { player.player?.play() }
+            RedditVideoComposer.present(from: self, link: mediaLink, fallbackURL: url)
             return
         } else if mediaLink.isImageLink || mediaLink.domain?.hasSuffix("redd.it") == true {
             let url = mediaLink.isImageLink ? mediaLink.url.flatMap(URL.init(string:))
