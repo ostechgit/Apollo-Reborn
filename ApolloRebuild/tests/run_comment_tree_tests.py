@@ -26,7 +26,7 @@ class RDKComment: RDKThing {
     }
 }
 class RDKMoreComments: RDKThing {
-    var parentID: String?; var depth: Int; var count: Int = 0
+    var parentID: String?; var depth: Int; var count: Int = 0; var children: [String] = []
     init(_ name: String, _ parent: String, _ depth: Int) {
         self.parentID = parent; self.depth = depth; super.init(name)
     }

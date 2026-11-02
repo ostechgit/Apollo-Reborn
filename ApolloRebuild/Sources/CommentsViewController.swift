@@ -1085,7 +1085,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         // response and would otherwise hang around until tapped again.
         let things = things.filter { thing in
             guard let more = thing as? RDKMoreComments else { return true }
-            return !(more.children ?? []).isEmpty
+            return !more.children.isEmpty
         }
 
         var result: [Row] = []
