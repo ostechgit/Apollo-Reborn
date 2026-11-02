@@ -111,6 +111,9 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 // Native submit funnel: text + t1_/t3_ fullname -> POST api/comment.
 - (nullable NSURLSessionDataTask *)submitComment:(NSString *)text onThingWithFullName:(NSString *)fullName completion:(void (^)(RDKComment *_Nullable comment, NSError *_Nullable error))completion NS_SWIFT_NAME(submitComment(_:onThingWithFullName:completion:));
 
+/// Cursor of the most recent full-thread listing, so the screen can page on.
+@property (nonatomic, copy, nullable, readonly) NSString *lastCommentsAfterCursor;
+
 // One page of top-level comments plus the listing's `after` cursor, which is how
 // the original batch-fetches long threads.
 - (nullable NSURLSessionDataTask *)commentsPageForLinkWithIdentifier:(NSString *)identifier sort:(RDKCommentSortingMethod)sort after:(nullable NSString *)after completion:(void (^)(NSArray<RDKThing *> *_Nullable comments, NSString *_Nullable nextAfter, NSError *_Nullable error))completion NS_SWIFT_NAME(commentsPage(forLinkWithIdentifier:sort:after:completion:));

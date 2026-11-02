@@ -723,7 +723,8 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                     return
                 }
                 if let link = link { self.link = link }
-                self.nextCommentsAfter = nil
+                // The listing's own cursor is what lets the thread page in.
+                self.nextCommentsAfter = RDKClient.shared().lastCommentsAfterCursor
                 self.tree = Self.flatten(comments ?? [], depth: 0)
                 self.rebuildRows()
                 self.configureNavigationBar()

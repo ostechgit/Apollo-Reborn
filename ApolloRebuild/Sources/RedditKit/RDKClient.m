@@ -23,6 +23,7 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
 @interface RDKClient ()
 // Work waiting on a token refresh or app-only authentication
 @property (nonatomic, strong) NSMutableArray<void (^)(NSError *_Nullable)> *queuedOperations;
+@property (nonatomic, copy, readwrite, nullable) NSString *lastCommentsAfterCursor;
 @end
 
 @implementation RDKClient
@@ -482,6 +483,9 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
         }
         RDKLink *link = [self objectsFromListingResponse:response[0]].firstObject;
         NSArray *comments = [self objectsFromListingResponse:response[1]];
+        // Remember the listing's cursor; without it the screen can never page.
+        NSDictionary *commentData = [response[1] isKindOfClass:NSDictionary.class] ? response[1][@"data"] : nil;
+        self.lastCommentsAfterCursor = [commentData[@"after"] isKindOfClass:NSString.class] ? commentData[@"after"] : nil;
         completion([link isKindOfClass:[RDKLink class]] ? link : nil, comments, nil);
     }];
 }
