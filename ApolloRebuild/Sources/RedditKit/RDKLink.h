@@ -53,6 +53,8 @@ NS_ASSUME_NONNULL_BEGIN
 // Counts
 @property (nonatomic, assign) NSInteger totalComments; // data.num_comments
 @property (nonatomic, assign) NSInteger gilded;
+/// data.all_awardings, kept raw so the icons can be read without a new model.
+@property (nonatomic, copy, nullable) NSArray<NSDictionary *> *allAwardings;
 @property (nonatomic, assign) double upvoteRatio;
 
 @property (nonatomic, strong, nullable) RDKLink *crosspostParent;  // data.crosspost_parent_list[0]

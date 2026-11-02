@@ -466,7 +466,15 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
 
         var headerChildren: [ASLayoutElement] = [self.authorNode]
         if self.flairNode.attributedText != nil {
-            headerChildren.append(self.flairNode)
+            // Stock draws flair as a chip, not bare text.
+            let background = ASDisplayNode()
+            background.backgroundColor = .tertiarySystemFill
+            background.cornerRadius = 4
+            let padded = ASInsetLayoutSpec(insets: UIEdgeInsets(top: 1, left: 5, bottom: 1, right: 5),
+                                           child: self.flairNode)
+            let chip = ASBackgroundLayoutSpec(child: padded, background: background)
+            chip.style.spacingBefore = 6
+            headerChildren.append(chip)
         }
         let markers: [(ASImageNode, String, Bool)] = [(self.stickyNode, "inline-sticky", self.comment.stickied),
                                                       (self.lockedNode, "inline-locked", self.comment.isLocked),
@@ -484,6 +492,15 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             indicator.style.spacingBefore = 5
             indicator.isUserInteractionEnabled = false
             headerChildren.append(indicator)
+        }
+        for url in AwardIcons.urls(from: self.comment.allAwardings, limit: 1) {
+            let award = ASNetworkImageNode()
+            award.url = url
+            award.contentMode = .scaleAspectFit
+            award.isUserInteractionEnabled = false
+            award.style.preferredSize = CGSize(width: 16, height: 16)
+            award.style.spacingBefore = 5
+            headerChildren.append(award)
         }
         headerChildren.append(self.pointsNode)
         if self.editedNode.image != nil {

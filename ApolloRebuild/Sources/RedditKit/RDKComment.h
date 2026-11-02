@@ -33,6 +33,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger gilded;
 /// data.author_cakeday — true only on the author's cake day.
 @property (nonatomic, assign) BOOL authorCakeday;
+/// data.all_awardings, kept raw so the icons can be read without a new model.
+@property (nonatomic, copy, nullable) NSArray<NSDictionary *> *allAwardings;
 @property (nonatomic, assign) NSInteger controversiality;
 @property (nonatomic, assign) NSInteger depth;
 

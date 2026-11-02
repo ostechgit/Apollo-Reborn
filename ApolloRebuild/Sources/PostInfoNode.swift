@@ -203,6 +203,15 @@ class PostInfoNode: ASDisplayNode {
         }
         rowChildren.append(contentsOf: [self.avatarNode, self.authorTextNode])
         // Indicators sit directly after the author, as the original draws them.
+        for url in AwardIcons.urls(from: self.link.allAwardings, limit: 3) {
+            let award = ASNetworkImageNode()
+            award.url = url
+            award.contentMode = .scaleAspectFit
+            award.isUserInteractionEnabled = false
+            award.style.preferredSize = CGSize(width: 16, height: 16)
+            award.style.spacingBefore = 5
+            rowChildren.append(award)
+        }
         let indicators: [(ASImageNode, Bool)] = [(self.stickyNode, self.link.stickied),
                                                  (self.lockedNode, self.link.locked),
                                                  (self.savedNode, self.link.saved),

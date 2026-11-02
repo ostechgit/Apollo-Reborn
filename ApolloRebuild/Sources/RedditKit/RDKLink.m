@@ -47,6 +47,7 @@
         @"visited": @"data.visited",
         @"totalComments": @"data.num_comments",
         @"gilded": @"data.gilded",
+        @"allAwardings": @"data.all_awardings",
         @"upvoteRatio": @"data.upvote_ratio",
         @"thumbnailURL": @"data.thumbnail",
         @"crosspostParent": @"data.crosspost_parent_list",

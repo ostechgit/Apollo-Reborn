@@ -23,6 +23,7 @@
         @"mediaMetadata": @"data.media_metadata",
         @"isSubmitter": @"data.is_submitter",
         @"authorCakeday": @"data.author_cakeday",
+        @"allAwardings": @"data.all_awardings",
         @"scoreHidden": @"data.score_hidden",
         @"stickied": @"data.stickied",
         @"collapsed": @"data.collapsed",
