@@ -46,8 +46,8 @@ enum SlideGesturePoint: Int, CaseIterable {
         self == .firstLeft || self == .secondLeft
     }
 
-    /// `true` for the `second-*` (longer) slots, which only fire once the
-    /// gesture passes `SlideGestureSettings.longSwipeThreshold`.
+    /// `true` for the `second-*` (longer) slots, which only fire past the long
+    /// threshold recovered from `SlideGestureBuilder.method_26`.
     var isLong: Bool {
         self == .secondLeft || self == .secondRight
     }
@@ -232,17 +232,6 @@ struct SlideGestureSettings {
         }
         set { store.set(newValue.rawValue, forKey: triggerPointKey) }
     }
-
-    /// Fraction of the row/cell width a drag must cover for the long slot.
-    /// Apollo exposes only "Normal" / "Later"; the exact constants were not
-    /// recovered, so these are the two thresholds used here (documented as an
-    /// estimate rather than presented as measured).
-    static var longSwipeThreshold: CGFloat {
-        longSwipeTriggerPoint == .later ? 0.70 : 0.45
-    }
-
-    /// A drag shorter than this never fires an action.
-    static let minimumSwipeFraction: CGFloat = 0.18
 
     // MARK: - Direction gates
 

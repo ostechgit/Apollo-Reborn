@@ -41,11 +41,19 @@ final class SlideGesturePan: NSObject, UIGestureRecognizerDelegate {
     private var actions: [SlideGestureAction] = []
     private var shownPoint: SlideGesturePoint?
 
-    // Geometry recovered from `method_26`.
+    // Geometry and thresholds recovered from `method_26` / `method_22`.
     private static let contentSlideRate: CGFloat = 0.85
     private static let iconSize: CGFloat = 34
     private static let iconEdgeInset: CGFloat = 12
-    private static let iconFadeDistance: CGFloat = 58
+    /// The short slot fires at 58pt of *scaled* travel; the same 58 is the
+    /// icon's alpha ramp divisor. Below it nothing fires.
+    private static let shortThreshold: CGFloat = 58
+    /// Long slot with the trigger point set to "normal".
+    private static let longThresholdNormal: CGFloat = 120
+    /// Long slot with "later": 0.47 x cell width, capped at 188pt.
+    private static let longFractionLater: CGFloat = 0.47
+    private static let longThresholdCap: CGFloat = 188
+    private static let iconMinimumAlpha: CGFloat = 0.4
 
     init(context: SlideGestureContext, onSlide: @escaping (SlideGesturePoint) -> Void) {
         self.context = context
@@ -94,31 +102,45 @@ final class SlideGesturePan: NSObject, UIGestureRecognizerDelegate {
                 self.collapsePanel(in: view, animated: false)
                 return
             }
-            let fraction = abs(translation.x) / max(view.bounds.width, 1)
-            let isLong = fraction >= SlideGestureSettings.longSwipeThreshold
-            let point: SlideGesturePoint = leftward
-                ? (isLong ? .secondLeft : .firstLeft)
-                : (isLong ? .secondRight : .firstRight)
+            let point = self.slot(for: translation, in: view, leftward: leftward)
             self.showPanel(for: point, leftward: leftward, translation: translation, in: view)
 
         case .ended:
-            let fraction = abs(translation.x) / max(view.bounds.width, 1)
             let leftward = translation.x < 0
+            let scaled = abs(translation.x) * Self.contentSlideRate
             let valid = abs(translation.x) > abs(translation.y)
-                && fraction >= SlideGestureSettings.minimumSwipeFraction
+                && scaled >= Self.shortThreshold
             self.collapsePanel(in: view, animated: true)
             guard valid else { return }
             if leftward ? SlideGestureSettings.leftSwipesDisabled : SlideGestureSettings.rightSwipesDisabled {
                 return
             }
-            let isLong = fraction >= SlideGestureSettings.longSwipeThreshold
-            let point: SlideGesturePoint = leftward
-                ? (isLong ? .secondLeft : .firstLeft)
-                : (isLong ? .secondRight : .firstRight)
-            self.onSlide(point)
+            self.onSlide(self.slot(for: translation, in: view, leftward: leftward))
 
         default:
             self.collapsePanel(in: view, animated: true)
+        }
+    }
+
+    /// Which of the four slots the drag has reached.
+    ///
+    /// All comparisons use the scaled travel (0.85 x translation), matching
+    /// `method_26`: the short slot is a fixed 58pt, the long slot is either a
+    /// fixed 120pt ("normal") or 0.47 x width capped at 188pt ("later").
+    private func slot(for translation: CGPoint, in view: UIView, leftward: Bool) -> SlideGesturePoint {
+        let scaled = abs(translation.x) * Self.contentSlideRate
+        let isLong: Bool
+        if SlideGestureSettings.longSwipeTriggerPoint == .later {
+            let threshold = min(view.bounds.width * Self.longFractionLater, Self.longThresholdCap)
+            isLong = scaled >= threshold
+        } else {
+            isLong = scaled >= Self.longThresholdNormal
+        }
+        switch (leftward, isLong) {
+        case (true, false): return .firstLeft
+        case (true, true): return .secondLeft
+        case (false, false): return .firstRight
+        case (false, true): return .secondRight
         }
     }
 
@@ -145,8 +167,9 @@ final class SlideGesturePan: NSObject, UIGestureRecognizerDelegate {
             x: leftward ? revealed - Self.iconEdgeInset - Self.iconSize : Self.iconEdgeInset,
             y: (height - Self.iconSize) / 2,
             width: Self.iconSize, height: Self.iconSize)
-        // `min(|translation| / 58, 1)` in the original.
-        self.iconView.alpha = min(abs(translation.x) / Self.iconFadeDistance, 1)
+        // `max(min(|p| / 58, 1), 0.4)` in the original, on the scaled travel.
+        let scaled = abs(translation.x) * Self.contentSlideRate
+        self.iconView.alpha = max(min(scaled / Self.shortThreshold, 1), Self.iconMinimumAlpha)
 
         if self.shownPoint != point {
             self.shownPoint = point
@@ -173,7 +196,7 @@ final class SlideGesturePan: NSObject, UIGestureRecognizerDelegate {
             finish()
             return
         }
-        UIView.animate(withDuration: 0.2, delay: 0,
+        UIView.animate(withDuration: 0.4, delay: 0,
                        usingSpringWithDamping: 1.0, initialSpringVelocity: 2.0,
                        options: [.curveEaseOut], animations: {
             self.panel.alpha = 0
@@ -188,7 +211,12 @@ final class SlideGesturePan: NSObject, UIGestureRecognizerDelegate {
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer, let view = pan.view else { return false }
         let velocity = pan.velocity(in: view)
-        return abs(velocity.x) > abs(velocity.y)
+        if velocity == .zero {
+            return abs(pan.translation(in: view).y) < abs(pan.translation(in: view).x)
+        }
+        guard abs(velocity.y) > 0 else { return true }
+        // Recovered from `gestureRecognizerShouldBegin:`: a 1.65 velocity ratio.
+        return abs(velocity.x / velocity.y) >= 1.65
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
