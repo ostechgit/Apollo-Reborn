@@ -382,7 +382,10 @@ enum PostTitleNode {
             .foregroundColor: read ? ApolloPalette.readTitle : UIColor.label
         ])
 
-        if let flair = PostFormatting.flairText(for: link),
+        // Appearance → "Show Post Flair" gates the chip.
+        let showsFlair = UserDefaults.standard.object(forKey: "ShowPostFlair") as? Bool ?? true
+        if showsFlair,
+           let flair = PostFormatting.flairText(for: link),
            let chip = ApolloArtwork.flairChip(text: flair, traits: traitCollection) {
             let attachment = NSTextAttachment(image: chip)
             // Sit the chip on the text baseline: its bottom lands just under

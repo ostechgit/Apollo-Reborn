@@ -203,7 +203,9 @@ class PostInfoNode: ASDisplayNode {
         }
         rowChildren.append(contentsOf: [self.avatarNode, self.authorTextNode])
         // Indicators sit directly after the author, as the original draws them.
-        for url in AwardIcons.urls(from: self.link.allAwardings, limit: 3) {
+        // Appearance → "Show Awards" gates these.
+        let showsAwards = UserDefaults.standard.object(forKey: "ShowAwards") as? Bool ?? true
+        for url in showsAwards ? AwardIcons.urls(from: self.link.allAwardings, limit: 3) : [] {
             let award = ASNetworkImageNode()
             award.url = url
             award.contentMode = .scaleAspectFit

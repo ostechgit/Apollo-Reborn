@@ -74,6 +74,10 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         }
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -98,6 +102,11 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
         self.refreshControl.addTarget(self, action: #selector(refreshControlActivated), for: .valueChanged)
         tableView.refreshControl = self.refreshControl
+
+        // Settings writes these keys; rebuild the visible cells when they change.
+        self.appearanceSnapshot = self.currentAppearanceSnapshot()
+        NotificationCenter.default.addObserver(self, selector: #selector(userDefaultsDidChange),
+                                               name: UserDefaults.didChangeNotification, object: nil)
 
         self.configureNavigationBar()
         self.loadSubredditBanner()
@@ -295,9 +304,47 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
     /// Compact rows instead of large cards, as the original's feed menu offers.
     /// Stock stores this under `UseCompactThumbnails` (Appearance → "Compact").
-    private(set) lazy var usesCompactLayout: Bool =
-        UserDefaults.standard.bool(forKey: "UseCompactThumbnails") {
-        didSet { UserDefaults.standard.set(self.usesCompactLayout, forKey: "UseCompactThumbnails") }
+    ///
+    /// Computed rather than cached so a change made in Settings applies as soon
+    /// as the feed is on screen; cell nodes read the value at init, so the table
+    /// is rebuilt when it changes.
+    private(set) var usesCompactLayout: Bool {
+        get { UserDefaults.standard.bool(forKey: "UseCompactThumbnails") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "UseCompactThumbnails")
+            self.applyAppearanceChange()
+        }
+    }
+
+    /// Appearance keys the feed renders from. Nodes read these when they are
+    /// created, so any change means the visible cells are stale.
+    private static let appearanceKeys = [
+        "UseCompactThumbnails",
+        "CompactModeHideThumbnails",
+        "CompactPostsThumbnailSize",
+        "LargeThumbnailsShowVotingButtons",
+        "ShowPostFlair",
+        "ShowUserFlair",
+        "ShowAwards",
+    ]
+
+    private var appearanceSnapshot: [String] = []
+
+    private func currentAppearanceSnapshot() -> [String] {
+        return Self.appearanceKeys.map { key in
+            "\(key)=\(String(describing: UserDefaults.standard.object(forKey: key)))"
+        }
+    }
+
+    private func applyAppearanceChange() {
+        self.appearanceSnapshot = self.currentAppearanceSnapshot()
+        self.tableNode.reloadData()
+        self.configureNavigationBar()
+    }
+
+    @objc private func userDefaultsDidChange() {
+        guard self.currentAppearanceSnapshot() != self.appearanceSnapshot else { return }
+        self.applyAppearanceChange()
     }
 
     /// Reddit's `visited` flag is what "read" means in the feed.

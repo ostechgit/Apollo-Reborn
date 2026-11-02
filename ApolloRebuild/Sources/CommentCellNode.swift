@@ -501,7 +501,8 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
             indicator.isUserInteractionEnabled = false
             headerChildren.append(indicator)
         }
-        for url in AwardIcons.urls(from: self.comment.allAwardings, limit: 1) {
+        let showsAwards = UserDefaults.standard.object(forKey: "ShowAwards") as? Bool ?? true
+        for url in showsAwards ? AwardIcons.urls(from: self.comment.allAwardings, limit: 1) : [] {
             let award = ASNetworkImageNode()
             award.url = url
             award.contentMode = .scaleAspectFit
