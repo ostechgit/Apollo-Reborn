@@ -143,6 +143,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     /// Swiping a comment left opens the reply composer for it, which is what the
     /// original does (its swipe actions are disabled per direction in Settings).
     var onSlideGesture: ((SlideGesturePoint) -> Void)?
+    private var slidePan: SlideGesturePan?
     var onAuthorTapped: ((String) -> Void)?
 
     func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
@@ -365,34 +366,14 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
         self.bodyNode.view.addGestureRecognizer(bodyTap)
 
         if self.onSlideGesture != nil {
-            // Horizontal-only: vertical drags stay with the table.
-            let swipe = UIPanGestureRecognizer(target: self, action: #selector(CommentCellNode.panned(_:)))
-            swipe.delegate = self
-            swipe.maximumNumberOfTouches = 1
-            self.view.addGestureRecognizer(swipe)
+            // Horizontal-only: vertical drags stay with the table. The badge is
+            // drawn by the shared pan, so comments match the feed's feedback.
+            let pan = SlideGesturePan(context: .comments) { [weak self] point in
+                self?.onSlideGesture?(point)
+            }
+            pan.attach(to: self.view)
+            self.slidePan = pan
         }
-    }
-
-    @objc private func panned(_ recognizer: UIPanGestureRecognizer) {
-        guard recognizer.state == .ended else { return }
-        let translation = recognizer.translation(in: self.view)
-        guard abs(translation.x) > abs(translation.y) else { return }
-        let width = max(self.view.bounds.width, 1)
-        let fraction = abs(translation.x) / width
-        guard fraction >= SlideGestureSettings.minimumSwipeFraction else { return }
-        let leftward = translation.x < 0
-        if leftward ? SlideGestureSettings.leftSwipesDisabled : SlideGestureSettings.rightSwipesDisabled {
-            return
-        }
-        let isLong = fraction >= SlideGestureSettings.longSwipeThreshold
-        let point: SlideGesturePoint
-        switch (leftward, isLong) {
-        case (true, false): point = .firstLeft
-        case (true, true): point = .secondLeft
-        case (false, false): point = .firstRight
-        case (false, true): point = .secondRight
-        }
-        self.onSlideGesture?(point)
     }
 
     /// Let the row's swipe coexist with the table's vertical scrolling.
