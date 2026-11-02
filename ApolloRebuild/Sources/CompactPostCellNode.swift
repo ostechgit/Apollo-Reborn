@@ -22,7 +22,11 @@ class CompactPostCellNode: ASCellNode {
 
     init(link: RDKLink, inSpecificSubreddit: Bool = false, showsThumbnail: Bool = true) {
         self.link = link
-        self.showsThumbnail = showsThumbnail && (link.thumbnailURL != nil || link.hasPreviewImage)
+        // Stock's Appearance setting can hide compact thumbnails entirely
+        // (`CompactModeHideThumbnails`), independently of whether the link has one.
+        let hidden = UserDefaults.standard.bool(forKey: "CompactModeHideThumbnails")
+        self.showsThumbnail = showsThumbnail && !hidden
+            && (link.thumbnailURL != nil || link.hasPreviewImage)
         self.infoNode = PostInfoNode(link: link, showsSubreddit: !inSpecificSubreddit,
                                      isCompact: true, isInsideComments: false)
         super.init()
@@ -40,14 +44,15 @@ class CompactPostCellNode: ASCellNode {
         if self.showsThumbnail {
             let url = link.thumbnailURL.flatMap(URL.init(string:))
                 ?? link.previewImage(forWidth: 120, scale: UIScreen.main.scale)?.url.flatMap(URL.init(string:))
+            let metrics = Self.thumbnailMetrics()
             self.thumbnailNode.url = url
             self.thumbnailNode.contentMode = .scaleAspectFill
             self.thumbnailNode.clipsToBounds = true
-            self.thumbnailNode.cornerRadius = 6
+            self.thumbnailNode.cornerRadius = metrics.radius
             self.thumbnailNode.placeholderColor = .secondarySystemBackground
             self.thumbnailNode.placeholderEnabled = true
             self.thumbnailNode.isUserInteractionEnabled = false
-            self.thumbnailNode.style.preferredSize = CGSize(width: 72, height: 72)
+            self.thumbnailNode.style.preferredSize = CGSize(width: metrics.size, height: metrics.size)
         }
 
         self.separatorNode.backgroundColor = .separator
@@ -57,6 +62,22 @@ class CompactPostCellNode: ASCellNode {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Stock's Appearance → Thumbnail Size setting (`CompactPostsThumbnailSize`
+    /// = small | medium | large).
+    ///
+    /// The corner radii are recovered from the binary (5 / 9 / 10, read at
+    /// `FUN_1006f0f60`). The point sizes are **not** recovered — Apollo sets them
+    /// in a layout helper that only carries a 4pt inset constant — so the three
+    /// sizes below are estimates and should be replaced once measured against
+    /// the real app.
+    private static func thumbnailMetrics() -> (size: CGFloat, radius: CGFloat) {
+        switch UserDefaults.standard.string(forKey: "CompactPostsThumbnailSize") {
+        case "medium": return (64, 9)
+        case "large": return (72, 10)
+        default: return (56, 5)      // "small", and the unset default
+        }
     }
 
     override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {

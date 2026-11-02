@@ -294,9 +294,10 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
     }
 
     /// Compact rows instead of large cards, as the original's feed menu offers.
+    /// Stock stores this under `UseCompactThumbnails` (Appearance → "Compact").
     private(set) lazy var usesCompactLayout: Bool =
-        UserDefaults.standard.bool(forKey: "feedCompactLayout") {
-        didSet { UserDefaults.standard.set(self.usesCompactLayout, forKey: "feedCompactLayout") }
+        UserDefaults.standard.bool(forKey: "UseCompactThumbnails") {
+        didSet { UserDefaults.standard.set(self.usesCompactLayout, forKey: "UseCompactThumbnails") }
     }
 
     /// Reddit's `visited` flag is what "read" means in the feed.

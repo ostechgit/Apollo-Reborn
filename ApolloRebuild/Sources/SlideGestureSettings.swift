@@ -236,4 +236,5 @@ struct SlideGestureSettings {
 
     static var leftSwipesDisabled: Bool { store.bool(forKey: disableLeftKey) }
     static var rightSwipesDisabled: Bool { store.bool(forKey: disableRightKey) }
+    static var navigationGesturesDisabled: Bool { store.bool(forKey: disableNavigationKey) }
 }

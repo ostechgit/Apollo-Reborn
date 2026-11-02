@@ -51,6 +51,40 @@ class SettingsGesturesViewController: FormViewController {
             self.form.append(section)
         }
 
+        // The three disable gates stock exposes above the trigger point.
+        let disableSection = Section()
+        disableSection.append(
+            SwitchRow("disableLeftSwipes") { row in
+                row.title = "Disable Left Swipes"
+                row.value = SlideGestureSettings.leftSwipesDisabled
+                row.onChange { row in
+                    SlideGestureSettings.store.set(row.value ?? false,
+                                                   forKey: SlideGestureSettings.disableLeftKey)
+                }
+            }
+        )
+        disableSection.append(
+            SwitchRow("disableRightSwipes") { row in
+                row.title = "Disable Right Swipes"
+                row.value = SlideGestureSettings.rightSwipesDisabled
+                row.onChange { row in
+                    SlideGestureSettings.store.set(row.value ?? false,
+                                                   forKey: SlideGestureSettings.disableRightKey)
+                }
+            }
+        )
+        disableSection.append(
+            SwitchRow("disableNavigationGestures") { row in
+                row.title = "Disable Navigation Gestures"
+                row.value = SlideGestureSettings.navigationGesturesDisabled
+                row.onChange { row in
+                    SlideGestureSettings.store.set(row.value ?? false,
+                                                   forKey: SlideGestureSettings.disableNavigationKey)
+                }
+            }
+        )
+        self.form.append(disableSection)
+
         let triggerSection = Section(footer: "When the long swipe action should trigger.")
         triggerSection.append(
             ActionSheetRow<String>("longSwipeTriggerPoint") { row in

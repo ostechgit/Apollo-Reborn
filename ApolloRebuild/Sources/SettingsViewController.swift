@@ -1,88 +1,86 @@
 import UIKit
 import Eureka
 
-// SettingsViewController - app settings
-// Reconstructed from apollo-base 1.15.11 binary analysis.
+// SettingsViewController - the root Settings list.
+//
+// Stock's row set was recovered from the icon asset each row loads
+// (`settings-account-`, `settings-appearance`, `settings-general-`, …) plus the
+// decoded titles; see Apollo-Source-Private/RE/settings-reference.md.
+//
+// Only destinations that exist in this rebuild are listed. Creating empty
+// screens for the rest would put fabricated UI in front of the user, so they are
+// deliberately absent until built.
 
 class SettingsViewController: FormViewController {
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
         self.title = "Settings"
-        
-        // Build the settings form
-        buildForm()
+        self.buildForm()
     }
-    
+
+    private func push(_ controller: UIViewController) {
+        self.navigationController?.pushViewController(controller, animated: true)
+    }
+
     private func buildForm() {
         self.form = Form()
-        
-        // General section
-        let generalSection = Section("General")
-        generalSection.append(
-            SwitchRow("theme") { row in
-                row.title = "Dark Mode"
-                row.value = ThemeManager.shared.isDark()
-                row.onChange { row in
-                    if row.value == true {
-                        ThemeManager.shared.setTheme(.dark)
-                    } else {
-                        ThemeManager.shared.setTheme(.light)
-                    }
-                }
-            }
-        )
-        generalSection.append(
-            SwitchRow("notifications") { row in
-                row.title = "Notifications"
-                row.value = true
-            }
-        )
-        generalSection.append(
-            SwitchRow("animations") { row in
-                row.title = "Animations"
-                row.value = true
-            }
-        )
-        self.form.append(generalSection)
-        
-        // Display section
-        let displaySection = Section("Display")
-        displaySection.append(
-            SwitchRow("compact") { row in
-                row.title = "Compact Mode"
-                row.value = false
-            }
-        )
-        displaySection.append(
-            SwitchRow("nsfw") { row in
-                row.title = "Show NSFW"
-                row.value = false
-            }
-        )
-        self.form.append(displaySection)
 
-        let gesturesSection = Section("Gestures")
-        gesturesSection.append(
-            ButtonRow("gestures") { row in
-                row.title = "Swipe Actions"
+        let browsing = Section()
+        browsing.append(
+            ButtonRow("general") { row in
+                row.title = "General"
                 row.onCellSelection { [weak self] _, _ in
-                    self?.navigationController?
-                        .pushViewController(SettingsGesturesViewController(), animated: true)
+                    self?.push(SettingsGeneralViewController())
                 }
             }
         )
-        self.form.append(gesturesSection)
-        
-        // About section
-        let aboutSection = Section("About")
-        aboutSection.append(
-            LabelRow("version") { row in
-                row.title = "Version"
-                row.value = "1.15.11"
+        browsing.append(
+            ButtonRow("gestures") { row in
+                row.title = "Gestures"
+                row.onCellSelection { [weak self] _, _ in
+                    self?.push(SettingsGesturesViewController())
+                }
             }
         )
-        self.form.append(aboutSection)
+        browsing.append(
+            ButtonRow("filters") { row in
+                row.title = "Filters & Blocks"
+                row.onCellSelection { [weak self] _, _ in
+                    self?.push(SettingsFiltersViewController())
+                }
+            }
+        )
+        self.form.append(browsing)
+
+        let about = Section()
+        about.append(
+            ButtonRow("about") { row in
+                row.title = "About"
+                row.onCellSelection { [weak self] _, _ in
+                    self?.push(SettingsAboutViewController())
+                }
+            }
+        )
+        self.form.append(about)
     }
 }
+
+// Stock's root Settings list, in order, with the asset that identifies each row.
+// Rows marked "missing" have no screen in this rebuild yet:
+//
+//   Account / Add Account        settings-account-          missing
+//   Apollo Ultra                 settings-apollo-ultra      missing
+//   Appearance                   settings-appearance        missing
+//   General                      settings-general-          built
+//   Gestures                     settings-gestures-         built
+//   Filters & Blocks             settings-blocks-           placeholder screen
+//   Notifications                settings-notifications-light  missing
+//   Face ID & Passcode           settings-face-id-          missing
+//   Touch ID & Passcode          settings-touch-id-         missing
+//   Passcode                     settings-passcode-         missing
+//   Tip Jar                      settings-tip-jar-green     missing
+//   About                        settings-about-            placeholder screen
+//
+// The biometric row title is chosen at runtime: Face ID and Touch ID are separate
+// assets resolving to the same screen.
