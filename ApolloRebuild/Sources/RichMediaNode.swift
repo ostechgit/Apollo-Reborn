@@ -31,6 +31,10 @@ class RichMediaNode: ASControlNode {
     var onTapped: (() -> Void)?
 
     private let imageNode = ASNetworkImageNode()
+    /// Stock's gallery presentation is AlbumThumbnailsNode: a fixed 16:9 mosaic
+    /// of the first two or three images (decompiled 0x100300a98). One square
+    /// image on the left with two stacked beside it once there are three.
+    private var mosaicNodes: [ASNetworkImageNode] = []
     private let playNode = ASImageNode()
     /// NSFW and spoiler posts are blurred behind a centred badge until the
     /// reader taps. The badge assets are the original's `obscured-nsfw` /
@@ -66,6 +70,19 @@ class RichMediaNode: ASControlNode {
         super.init()
         self.automaticallyManagesSubnodes = true
         self.cardNode?.isUserInteractionEnabled = false
+
+        if link.isGallery, let images = link.galleryImages, images.count >= 2 {
+            self.mosaicNodes = images.prefix(3).map { item in
+                let node = ASNetworkImageNode()
+                node.url = item.url.flatMap(URL.init(string:))
+                node.contentMode = .scaleAspectFill
+                node.clipsToBounds = true
+                node.placeholderColor = .secondarySystemBackground
+                node.placeholderEnabled = true
+                node.isUserInteractionEnabled = false
+                return node
+            }
+        }
 
         self.imageNode.contentMode = .scaleAspectFill
         self.imageNode.clipsToBounds = true
@@ -116,6 +133,9 @@ class RichMediaNode: ASControlNode {
             let natural = CGFloat(item?.height ?? 0) / CGFloat(max(item?.width ?? 0, 1))
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
             var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
+            if self.mosaicNodes.count >= 2 {
+                media = ASRatioLayoutSpec(ratio: 9.0 / 16.0, child: self.mosaicSpec())
+            }
             if self.isVeiled {
                 // Blur the picture, then centre the badge over it.
                 media = ASOverlayLayoutSpec(child: media, overlay: self.blurNode)
@@ -133,6 +153,27 @@ class RichMediaNode: ASControlNode {
             }
             return media
         }
+    }
+
+    /// The 16:9 mosaic: two halves, or a square left column with two stacked
+    /// beside it. Gutters are 1pt, as the original's layout uses.
+    private func mosaicSpec() -> ASLayoutSpec {
+        let spacing: CGFloat = 1
+        if self.mosaicNodes.count >= 3 {
+            let right = ASStackLayoutSpec(direction: .vertical, spacing: spacing,
+                                          justifyContent: .start, alignItems: .stretch,
+                                          children: Array(self.mosaicNodes[1...2]))
+            right.style.flexGrow = 1
+            let left = self.mosaicNodes[0]
+            left.style.flexGrow = 0
+            left.style.width = ASDimension(unit: .fraction, value: 0.5625)
+            return ASStackLayoutSpec(direction: .horizontal, spacing: spacing,
+                                     justifyContent: .start, alignItems: .stretch,
+                                     children: [left, right])
+        }
+        return ASStackLayoutSpec(direction: .horizontal, spacing: spacing,
+                                 justifyContent: .start, alignItems: .stretch,
+                                 children: self.mosaicNodes)
     }
 
     // MARK: - Actions
