@@ -126,6 +126,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// Whether the signed-in account moderates this post's subreddit. Stock only
     /// shows its Moderator row when this is true.
     private var isModerator = false
+    /// Subreddit banner shown above the post (stock's UltraHeaderBanner cell).
+    private var bannerURL: URL?
+    private var bannerRowOffset: Int { self.bannerURL == nil ? 0 : 1 }
     /// Mirrors the original's restoredVisibleComment / restoredContentOffsetY /
     /// restoredViewWidth: where the reader was, so returning to a thread or
     /// changing width puts them back instead of at the top.
@@ -232,6 +235,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         tableView.refreshControl = self.refreshControl
 
         self.loadModerationStatus()
+        self.loadSubredditBanner()
         self.configureFindBar()
         self.configureNavigationBar()
         self.configureJumpButton()
@@ -381,6 +385,13 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         }
         if !subreddit.isEmpty {
             items.append(self.action(subreddit, "option-subreddit") { [weak self] in self?.openSubreddit(subreddit) })
+        }
+        // Only your own post can be deleted; stock shows Delete for authorship.
+        let username = AccountManager.shared.username?.lowercased()
+        if let author = self.link.author?.lowercased(), !author.isEmpty, author == username {
+            items.append(self.action("Delete", "option-delete") { [weak self] in
+                self?.confirmDeletePost()
+            })
         }
         items.append(self.action("Collapse Child Comments", "option-collapse-child-comments") { [weak self] in
             self?.collapseAllTopLevelComments()
@@ -1244,13 +1255,16 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     }
 
     func tableNode(_ tableNode: ASTableNode, numberOfRowsInSection section: Int) -> Int {
-        let count = section == 0 ? (self.showsParentRow ? 2 : 1) : self.rows.count
+        let count = section == 0 ? (self.bannerRowOffset + 1 + (self.showsParentRow ? 1 : 0)) : self.rows.count
         return count
     }
 
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         if indexPath.section == 0 {
-            if indexPath.row == 1 {
+            if self.bannerRowOffset == 1, indexPath.row == 0, let bannerURL = self.bannerURL {
+                return { CommentsBannerCellNode(url: bannerURL) }
+            }
+            if indexPath.row == self.bannerRowOffset + 1 {
                 return {
                     let cell = ASTextCellNode()
                     cell.text = "Load parent comments…"
@@ -1335,6 +1349,16 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         return items
     }
 
+
+    /// Stock draws the subreddit's banner above the post (UltraHeaderBanner).
+    private func loadSubredditBanner() {
+        guard let subreddit = self.link.subreddit, !subreddit.isEmpty else { return }
+        RDKClient.shared().subredditBanner(forName: subreddit) { [weak self] urlString, _ in
+            guard let self = self, let urlString = urlString, let url = URL(string: urlString) else { return }
+            self.bannerURL = url
+            self.tableNode.reloadData()
+        }
+    }
 
     // MARK: - Moderation
 
@@ -1424,6 +1448,31 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         } else {
             Holla.showStatus(success, text: nil, fromViewController: self)
         }
+    }
+
+    // MARK: - Delete
+
+    private func confirmDeletePost() {
+        guard let fullName = self.link.fullName else { return }
+        let alert = UIAlertController(title: "Delete Post?",
+                                      message: "This cannot be undone.",
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            RDKClient.shared().deleteThing(withFullName: fullName) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    let failure = UIAlertController(title: "Couldn't Delete",
+                                                    message: error.localizedDescription, preferredStyle: .alert)
+                    failure.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(failure, animated: true)
+                    return
+                }
+                self.navigationController?.popViewController(animated: true)
+            }
+        })
+        self.present(alert, animated: true)
     }
 
     // MARK: - Report
@@ -1946,7 +1995,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
 
     func tableNode(_ tableNode: ASTableNode, didSelectRowAt indexPath: IndexPath) {
         tableNode.deselectRow(at: indexPath, animated: true)
-        if indexPath.section == 0, indexPath.row == 1 {
+        if indexPath.section == 0, indexPath.row == self.bannerRowOffset + 1 {
             self.loadParentComments()
             return
         }
@@ -2275,5 +2324,32 @@ enum ShareImageRenderer {
                 mark.draw(at: CGPoint(x: width - inset - size.width, y: height - 30), withAttributes: metaAttributes)
             }
         }
+    }
+}
+
+
+// CommentsBannerCellNode - the subreddit banner above a thread. Stock draws it
+// with UltraHeaderBannerTableViewCell; this is the same 110pt band.
+class CommentsBannerCellNode: ASCellNode {
+
+    private let imageNode = ASNetworkImageNode()
+
+    init(url: URL) {
+        super.init()
+        self.automaticallyManagesSubnodes = true
+        self.backgroundColor = .systemBackground
+        self.imageNode.url = url
+        self.imageNode.contentMode = .scaleAspectFill
+        self.imageNode.clipsToBounds = true
+        self.imageNode.isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
+        self.imageNode.style.height = ASDimension(unit: .points, value: 110)
+        return ASInsetLayoutSpec(insets: .zero, child: self.imageNode)
     }
 }

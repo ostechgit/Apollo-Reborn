@@ -121,6 +121,12 @@ typedef void (^RDKLinkAndCommentsCompletionBlock)(RDKLink *_Nullable link, NSArr
 // Subreddit rules for the report sheet (captured path: r/%@/about/rules.json).
 - (nullable NSURLSessionDataTask *)rulesForSubreddit:(NSString *)subreddit completion:(void (^)(NSArray<NSDictionary *> *_Nullable rules, NSError *_Nullable error))completion NS_SWIFT_NAME(rules(forSubreddit:completion:));
 
+/// The subreddit's header banner image URL (r/<name>/about.json → data.banner_img).
+- (nullable NSURLSessionDataTask *)subredditBannerForName:(NSString *)name completion:(void (^)(NSString *_Nullable url, NSError *_Nullable error))completion NS_SWIFT_NAME(subredditBanner(forName:completion:));
+
+/// Deletes a post or comment (api/del). Only valid for your own content.
+- (nullable NSURLSessionDataTask *)deleteThingWithFullName:(NSString *)fullName completion:(RDKCompletionBlock)completion;
+
 // MARK: Reporting (account required)
 // Wire formats captured from Apollo 1.15.11 by intercepting api/report:
 //   admin reason: thing_id, reason="site_reason_selected", site_reason="<sentence>"

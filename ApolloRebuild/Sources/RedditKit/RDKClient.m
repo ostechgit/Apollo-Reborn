@@ -650,6 +650,36 @@ static NSString *const RDKDeviceIdentifierKey = @"RDKDeviceIdentifier";
     }];
 }
 
+// MARK: - Subreddit banner
+
+- (NSURLSessionDataTask *)subredditBannerForName:(NSString *)name completion:(void (^)(NSString *, NSError *))completion {
+    if (!name.length) {
+        completion(nil, nil);
+        return nil;
+    }
+    NSString *path = [NSString stringWithFormat:@"r/%@/about.json", name];
+    return [self getPath:path parameters:nil completion:^(id response, NSError *error) {
+        if (error) { completion(nil, error); return; }
+        NSDictionary *data = [response isKindOfClass:NSDictionary.class] ? response[@"data"] : nil;
+        NSString *banner = [data[@"banner_img"] isKindOfClass:NSString.class] ? data[@"banner_img"] : nil;
+        completion(banner, nil);
+    }];
+}
+
+// MARK: - Deleting
+
+- (NSURLSessionDataTask *)deleteThingWithFullName:(NSString *)fullName completion:(RDKCompletionBlock)completion {
+    if (!self.isAuthenticatedWithOAuth) {
+        completion([self errorWithCode:RDKClientErrorAuthenticationRequired description:@"Sign in to a Reddit account to do that."]);
+        return nil;
+    }
+    if (!fullName.length) {
+        completion([self errorWithCode:RDKClientErrorInvalidResponse description:@"Nothing to delete."]);
+        return nil;
+    }
+    return [self accountTaskWithPath:@"api/del" parameters:@{@"id": fullName} completion:completion];
+}
+
 // MARK: - Subreddit rules
 
 - (NSURLSessionDataTask *)rulesForSubreddit:(NSString *)subreddit completion:(void (^)(NSArray<NSDictionary *> *, NSError *))completion {
