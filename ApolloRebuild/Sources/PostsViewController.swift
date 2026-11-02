@@ -541,11 +541,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
     func postCell(_ cell: LargePostCellNode, didTapMediaOf link: RDKLink) {
         if let source = ExternalVideoSource(url: link.url.flatMap(URL.init(string:))) {
-            let player = ExternalVideoViewController(source: source)
-            let navigation = UINavigationController(rootViewController: player)
-            player.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
-                primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
-            self.present(navigation, animated: true)
+            ExternalMediaResolver.present(from: self, source: source)
             return
         }
         if link.isVideo, let videoURL = link.redditVideoURL.flatMap(URL.init(string:)) {

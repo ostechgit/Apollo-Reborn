@@ -10,6 +10,7 @@ import WebKit
 enum ExternalVideoSource: Equatable {
     case youtube(String)
     case streamable(String)
+    case redgifs(String)
 
     init?(url: URL?) {
         guard let url = url, let host = url.host?.lowercased() else { return nil }
@@ -38,6 +39,12 @@ enum ExternalVideoSource: Equatable {
             return
         }
 
+        // redgifs.com/watch/<id> and the gifs/detail/<id> idiom
+        if matches("redgifs.com"), let id = path.last, !id.isEmpty {
+            self = .redgifs(id)
+            return
+        }
+
         return nil
     }
 
@@ -49,6 +56,8 @@ enum ExternalVideoSource: Equatable {
             return URL(string: "https://www.youtube.com/embed/\(id)?playsinline=1&rel=0")
         case .streamable(let id):
             return URL(string: "https://streamable.com/e/\(id)")
+        case .redgifs(let id):
+            return URL(string: "https://www.redgifs.com/ifr/\(id)")
         }
     }
 
@@ -56,6 +65,7 @@ enum ExternalVideoSource: Equatable {
         switch self {
         case .youtube: return "YouTube"
         case .streamable: return "Streamable"
+        case .redgifs: return "RedGIFs"
         }
     }
 }

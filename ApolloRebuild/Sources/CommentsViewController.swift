@@ -548,11 +548,7 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
     /// YouTube / Streamable play in-app; everything else keeps the viewer path.
     private func presentExternalVideoIfPossible(_ link: RDKLink) -> Bool {
         guard let source = ExternalVideoSource(url: link.url.flatMap(URL.init(string:))) else { return false }
-        let player = ExternalVideoViewController(source: source)
-        let navigation = UINavigationController(rootViewController: player)
-        player.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
-            primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
-        self.present(navigation, animated: true)
+        ExternalMediaResolver.present(from: self, source: source)
         return true
     }
 
