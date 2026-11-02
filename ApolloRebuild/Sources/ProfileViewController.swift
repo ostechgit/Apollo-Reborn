@@ -136,7 +136,77 @@ class ProfileViewController: UIViewController, ASTableDataSource, ASTableDelegat
     
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         let post = self.posts[indexPath.row]
-        return { PostCellNode(post: post) }
+        return { [weak self] in
+            let node = PostCellNode(post: post)
+            node.onSlideGesture = { [weak self, weak node] point in
+                guard let self = self, let node = node else { return }
+                self.performSlideGesture(point, on: post, cell: node)
+            }
+            return node
+        }
+    }
+
+    // MARK: - Slide gestures
+
+    /// Applies the action configured for `point` in the Profile Posts context
+    /// (`ProfilePostsSlideGestures`).
+    private func performSlideGesture(_ point: SlideGesturePoint, on link: RDKLink, cell: ASCellNode) {
+        let action = SlideGestureSettings.action(at: point, for: .profilePosts)
+        NSLog("[ApolloRebuild] slide gesture profilePosts %@ -> %@", point.rawValueString, action.rawValue)
+        switch action {
+        case .upvote, .unupvote, .downvote, .undownvote:
+            self.vote(link, action: action, cell: cell)
+        case .save, .unsave:
+            self.toggleSave(link, cell: cell)
+        case .hideAbove:
+            RDKClient.shared().hideLink(link) { [weak self] error in
+                guard error == nil else { return }
+                if let index = self?.posts.firstIndex(where: { $0.fullName == link.fullName }) {
+                    self?.posts.remove(at: index)
+                    self?.tableNode.reloadData()
+                }
+            }
+        case .reply, .moreOptions:
+            // Profile posts open their thread, where reply and the action sheet live.
+            self.navigationController?.pushViewController(
+                CommentsViewController(link: link), animated: true)
+        case .collapse, .collapseRoot, .toggleRead, .markRead, .markUnread,
+             .post, .selectMode, .parentComment:
+            NSLog("[ApolloRebuild] slide action %@ has no effect on a profile post", action.rawValue)
+        }
+    }
+
+    private func vote(_ link: RDKLink, action: SlideGestureAction, cell: ASCellNode) {
+        let direction: RDKVoteDirection
+        switch action {
+        case .upvote: direction = .up
+        case .downvote: direction = .down
+        default: direction = .none
+        }
+        guard AccountManager.shared.isLogged else { return }
+        switch direction {
+        case .up: link.voteStatus = .upvoted
+        case .down: link.voteStatus = .downvoted
+        default: link.voteStatus = .none
+        }
+        (cell as? LargePostCellNode)?.updateActionState()
+        RDKClient.shared().voteOnThing(withFullName: link.fullName ?? "", direction: direction) { _ in }
+    }
+
+    private func toggleSave(_ link: RDKLink, cell: ASCellNode) {
+        guard AccountManager.shared.isLogged else { return }
+        let wasSaved = link.saved
+        link.saved = !wasSaved
+        (cell as? LargePostCellNode)?.updateActionState()
+        let completion: RDKCompletionBlock = { error in
+            guard error != nil else { return }
+            link.saved = wasSaved
+        }
+        if wasSaved {
+            RDKClient.shared().unsaveThing(withFullName: link.fullName ?? "", completion: completion)
+        } else {
+            RDKClient.shared().saveThing(withFullName: link.fullName ?? "", completion: completion)
+        }
     }
     
     func tableNode(_ tableNode: ASTableNode, didSelectRowAt indexPath: IndexPath) {

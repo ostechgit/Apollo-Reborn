@@ -105,6 +105,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
         // Settings writes these keys; rebuild the visible cells when they change.
         self.appearanceSnapshot = self.currentAppearanceSnapshot()
+        self.reloadFilteredKeywords()
         NotificationCenter.default.addObserver(self, selector: #selector(userDefaultsDidChange),
                                                name: UserDefaults.didChangeNotification, object: nil)
 
@@ -326,6 +327,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
         "ShowPostFlair",
         "ShowUserFlair",
         "ShowAwards",
+        "KeywordFilters",
     ]
 
     private var appearanceSnapshot: [String] = []
@@ -338,6 +340,7 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
 
     private func applyAppearanceChange() {
         self.appearanceSnapshot = self.currentAppearanceSnapshot()
+        self.reloadFilteredKeywords()
         self.tableNode.reloadData()
         self.configureNavigationBar()
     }
@@ -387,7 +390,25 @@ class PostsViewController: UIViewController, ASTableDataSource, ASTableDelegate,
     }
 
     private var visibleLinks: [RDKLink] {
-        return self.hidesReadPosts ? self.links.filter { !$0.visited } : self.links
+        var links = self.hidesReadPosts ? self.links.filter { !$0.visited } : self.links
+        // Stock's Filters → keywords hide any post whose title contains one.
+        // The list is pre-folded and cached because this runs during layout.
+        if !self.filteredKeywords.isEmpty {
+            links = links.filter { link in
+                let title = (link.title ?? "").lowercased()
+                return !self.filteredKeywords.contains { title.contains($0) }
+            }
+        }
+        return links
+    }
+
+    /// Lowercased `KeywordFilters`, refreshed when the list changes.
+    private var filteredKeywords: [String] = []
+
+    private func reloadFilteredKeywords() {
+        self.filteredKeywords = (UserDefaults.standard.stringArray(forKey: "KeywordFilters") ?? [])
+            .map { $0.lowercased() }
+            .filter { !$0.isEmpty }
     }
 
     @objc private func accountDidChange() {
