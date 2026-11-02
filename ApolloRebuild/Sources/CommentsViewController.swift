@@ -1065,6 +1065,44 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
         self.reloadVisibleRows(reloading: Set(self.collapsedComments))
     }
 
+    // MARK: - Slide gestures
+
+    /// Applies the action configured for `point` in the Comments context.
+    ///
+    /// Apollo stores four action ids per context
+    /// (`CommentsSlideGestures`) and dispatches exactly this way; see
+    /// `SlideGestureSettings`.
+    private func performSlideGesture(_ point: SlideGesturePoint, on comment: RDKComment) {
+        let action = SlideGestureSettings.action(at: point, for: .comments)
+        NSLog("[ApolloRebuild] slide gesture comments %@ -> %@", point.rawValueString, action.rawValue)
+        switch action {
+        case .upvote:
+            self.vote(comment, .up)
+        case .unupvote:
+            self.vote(comment, .none)
+        case .downvote:
+            self.vote(comment, .down)
+        case .undownvote:
+            self.vote(comment, .none)
+        case .save, .unsave:
+            self.toggleSave(comment)
+        case .collapse:
+            self.toggleCollapse(comment)
+        case .collapseRoot:
+            self.collapseToTop(comment)
+        case .reply:
+            self.replyToComment(comment)
+        case .moreOptions:
+            self.presentActions(self.commentActions(for: comment))
+        case .toggleRead, .markRead, .markUnread, .post, .hideAbove,
+             .selectMode, .parentComment:
+            // Not meaningful on a comment thread (read state is a listing-level
+            // concept and the rest are post-scoped), so stock's picker would
+            // leave these inert here too.
+            NSLog("[ApolloRebuild] slide action %@ has no effect on a comment", action.rawValue)
+        }
+    }
+
     /// `moreDepth` is the depth of the comment whose replies these are. The
     /// original draws a "N more replies" row at that comment's own depth (bar
     /// and text align with the comment above it), not at its replies' depth.
@@ -1314,7 +1352,9 @@ class CommentsViewController: UIViewController, ASTableDataSource, ASTableDelega
                 cell.onAuthorTapped = { [weak self] username in self?.openAuthor(username) }
                 cell.onMediaTapped = { [weak self] url in self?.openMedia(url) }
                 cell.onBodyTapped = { [weak self] in self?.toggleCollapse(comment) }
-                cell.onSwipedLeft = { [weak self] in self?.replyToComment(comment) }
+                cell.onSlideGesture = { [weak self] point in
+                    self?.performSlideGesture(point, on: comment)
+                }
                 return cell
             }
         case .more(let more, let depth):

@@ -62,6 +62,18 @@ class SettingsViewController: FormViewController {
             }
         )
         self.form.append(displaySection)
+
+        let gesturesSection = Section("Gestures")
+        gesturesSection.append(
+            ButtonRow("gestures") { row in
+                row.title = "Swipe Actions"
+                row.onCellSelection { [weak self] _, _ in
+                    self?.navigationController?
+                        .pushViewController(SettingsGesturesViewController(), animated: true)
+                }
+            }
+        )
+        self.form.append(gesturesSection)
         
         // About section
         let aboutSection = Section("About")

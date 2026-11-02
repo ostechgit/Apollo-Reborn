@@ -134,8 +134,6 @@ enum CommentBody {
 
 class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelegate {
 
-    private static let swipeThreshold: CGFloat = 70
-
     var onLinkTapped: ((URL) -> Void)?
     /// Tapping a picture embedded in the body opens the media viewer.
     var onMediaTapped: ((URL) -> Void)?
@@ -144,7 +142,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     var onBodyTapped: (() -> Void)?
     /// Swiping a comment left opens the reply composer for it, which is what the
     /// original does (its swipe actions are disabled per direction in Settings).
-    var onSwipedLeft: (() -> Void)?
+    var onSlideGesture: ((SlideGesturePoint) -> Void)?
     var onAuthorTapped: ((String) -> Void)?
 
     func textNode(_ textNode: ASTextNode, tappedLinkAttribute attribute: String,
@@ -366,7 +364,7 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
         bodyTap.delegate = self
         self.bodyNode.view.addGestureRecognizer(bodyTap)
 
-        if self.onSwipedLeft != nil {
+        if self.onSlideGesture != nil {
             // Horizontal-only: vertical drags stay with the table.
             let swipe = UIPanGestureRecognizer(target: self, action: #selector(CommentCellNode.panned(_:)))
             swipe.delegate = self
@@ -376,22 +374,32 @@ class CommentCellNode: ASCellNode, ASTextNodeDelegate, UIGestureRecognizerDelega
     }
 
     @objc private func panned(_ recognizer: UIPanGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
         let translation = recognizer.translation(in: self.view)
-        switch recognizer.state {
-        case .ended:
-            if translation.x < -Self.swipeThreshold, abs(translation.x) > abs(translation.y) {
-                self.onSwipedLeft?()
-            }
-        default:
-            break
+        guard abs(translation.x) > abs(translation.y) else { return }
+        let width = max(self.view.bounds.width, 1)
+        let fraction = abs(translation.x) / width
+        guard fraction >= SlideGestureSettings.minimumSwipeFraction else { return }
+        let leftward = translation.x < 0
+        if leftward ? SlideGestureSettings.leftSwipesDisabled : SlideGestureSettings.rightSwipesDisabled {
+            return
         }
+        let isLong = fraction >= SlideGestureSettings.longSwipeThreshold
+        let point: SlideGesturePoint
+        switch (leftward, isLong) {
+        case (true, false): point = .firstLeft
+        case (true, true): point = .secondLeft
+        case (false, false): point = .firstRight
+        case (false, true): point = .secondRight
+        }
+        self.onSlideGesture?(point)
     }
 
     /// Let the row's swipe coexist with the table's vertical scrolling.
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: self.view)
-        return abs(velocity.x) > abs(velocity.y) && velocity.x < 0
+        return abs(velocity.x) > abs(velocity.y)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
