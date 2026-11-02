@@ -123,6 +123,9 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
     let titleNode = ASTextNode()
     let postInfoNode: PostInfoNode
     let selfTextNode = ASTextNode()
+    /// Poll options with their share of the vote, drawn under the self text the
+    /// way the original shows a poll.
+    private var pollNodes: [ASTextNode] = []
     let richMediaNode: RichMediaNode?
     /// A crosspost draws its PARENT's media inside a CrosspostNode card instead
     /// of a plain RichMediaNode; the cell still owns the media tap.
@@ -166,6 +169,18 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
             self.selfTextNode.delegate = self
             self.selfTextNode.linkAttributeNames = [NSAttributedString.Key.link.rawValue]
             self.selfTextNode.isUserInteractionEnabled = true
+        }
+        self.pollNodes = (link.pollOptions ?? []).map { option in
+            let node = ASTextNode()
+            let text = option["text"] as? String ?? ""
+            let votes = (option["vote_count"] as? NSNumber)?.intValue ?? 0
+            let total = max(link.pollTotalVotes, 1)
+            let share = Int((Double(votes) / Double(total) * 100).rounded())
+            node.attributedText = NSAttributedString(string: "\(text)   \(share)%", attributes: [
+                .font: UIFont.systemFont(ofSize: 15),
+                .foregroundColor: UIColor.label,
+            ])
+            return node
         }
         self.selfTextNode.maximumNumberOfLines = isInsideComments ? 0 : 3
         self.selfTextNode.truncationMode = .byTruncatingTail
@@ -276,6 +291,11 @@ class LargePostCellNode: ASCellNode, ASTextNodeDelegate {
         if self.selfTextNode.attributedText != nil {
             self.selfTextNode.style.spacingBefore = 10
             headingChildren.append(self.selfTextNode)
+        }
+        // A poll's options follow the body text.
+        for (index, pollNode) in self.pollNodes.enumerated() {
+            pollNode.style.spacingBefore = index == 0 ? 12 : 8
+            headingChildren.append(pollNode)
         }
         let heading = ASInsetLayoutSpec(insets: textInsets,
                                         child: ASStackLayoutSpec(direction: .vertical, spacing: 0,

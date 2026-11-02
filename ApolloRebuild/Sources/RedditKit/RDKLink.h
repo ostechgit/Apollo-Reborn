@@ -61,6 +61,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *thumbnailURL;  // only real URLs; Reddit's "self"/"default"/"nsfw"/"spoiler" become nil
 @property (nonatomic, copy, nullable) NSArray<RDKLinkPreviewItem *> *previewImages; // preview source + resolutions, narrowest first
 @property (nonatomic, copy, nullable) NSString *redditVideoURL; // data.media.reddit_video.fallback_url
+/// data.poll_data.options along with the totals Reddit reports. Empty for
+/// posts that are not polls.
+@property (nonatomic, copy, nullable) NSArray<NSDictionary *> *pollOptions;
+@property (nonatomic, assign) NSInteger pollTotalVotes;
 @property (nonatomic, assign) NSInteger galleryItemCount;       // data.gallery_data.items
 @property (nonatomic, copy, nullable) NSArray<RDKLinkPreviewItem *> *galleryImages; // full-size image per gallery item, in order (from media_metadata)
 

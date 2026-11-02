@@ -40,6 +40,8 @@ class RichMediaNode: ASControlNode {
         UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterialDark))
     })
     private let veilNode = ASImageNode()
+    /// "1/4" badge for a gallery, which the original draws over the image.
+    private let galleryCountNode = ASTextNode()
     private var isVeiled: Bool
     private let cardNode: LinkButtonNode?
 
@@ -72,6 +74,15 @@ class RichMediaNode: ASControlNode {
         // The node itself is the tap target, so no child may swallow the touch.
         self.imageNode.isUserInteractionEnabled = false
         self.blurNode.isUserInteractionEnabled = false
+        if link.isGallery, link.galleryItemCount > 1 {
+            self.galleryCountNode.attributedText = NSAttributedString(string: "1/\(link.galleryItemCount)", attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: UIColor.white,
+            ])
+            self.galleryCountNode.backgroundColor = UIColor(white: 0, alpha: 0.55)
+            self.galleryCountNode.cornerRadius = 11
+            self.galleryCountNode.textContainerInset = UIEdgeInsets(top: 3, left: 8, bottom: 3, right: 8)
+        }
         self.veilNode.contentMode = .center
         self.veilNode.isUserInteractionEnabled = false
         // The catalog rendition is a black diamond with a white "!", so it must
@@ -113,6 +124,12 @@ class RichMediaNode: ASControlNode {
             let natural = CGFloat(item?.height ?? 0) / CGFloat(max(item?.width ?? 0, 1))
             let ratio = min(max(natural, 0.2), self.maximumAspectRatio)
             var media: ASLayoutSpec = ASRatioLayoutSpec(ratio: ratio, child: self.imageNode)
+            if self.link.isGallery, self.link.galleryItemCount > 1 {
+                media = ASOverlayLayoutSpec(child: media,
+                                            overlay: ASInsetLayoutSpec(insets: UIEdgeInsets(top: .infinity, left: .infinity,
+                                                                                            bottom: 10, right: 10),
+                                                                       child: self.galleryCountNode))
+            }
             if self.isVeiled {
                 // Blur the picture, then centre the badge over it.
                 media = ASOverlayLayoutSpec(child: media, overlay: self.blurNode)
